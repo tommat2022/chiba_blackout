@@ -1,0 +1,488 @@
+{
+  "emails": [
+    "mattom2016@gmail.com"
+  ],
+  "isMonitoringActive": true,
+  "intervalMinutes": 30,
+  "lastCheck": "2026-08-23T02:06:02.111Z",
+  "previousFunabashiCount": 0,
+  "cities": [
+    {
+      "name": "船橋市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "千葉市中央区",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "千葉市花見川区",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "市川市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "松戸市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "柏市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "木更津市",
+      "count": 0,
+      "areas": []
+    }
+  ],
+  "funabashi": {
+    "name": "船橋市",
+    "count": 0,
+    "areas": []
+  },
+  "logs": [
+    {
+      "timestamp": "2026-08-23T02:06:47.204Z",
+      "type": "info",
+      "message": "管理者 (hokensho) がログインしました。"
+    },
+    {
+      "timestamp": "2026-08-23T02:06:02.111Z",
+      "type": "info",
+      "message": "チェック完了: 千葉県全域停電件数 0軒 / 船橋市停電件数 0軒"
+    },
+    {
+      "timestamp": "2026-08-23T02:06:01.902Z",
+      "type": "info",
+      "message": "東京電力 停電情報データをチェック中... (手動実行)"
+    },
+    {
+      "timestamp": "2026-08-23T02:06:01.902Z",
+      "type": "info",
+      "message": "バックグラウンド監視タイマーを開始しました (間隔: 30分)"
+    },
+    {
+      "timestamp": "2026-08-23T02:06:01.895Z",
+      "type": "info",
+      "message": "千葉県停電監視サーバーがポート 3000 で起動しました。"
+    },
+    {
+      "timestamp": "2026-08-23T02:04:13.805Z",
+      "type": "success",
+      "message": "FormSubmit経由で 1件 のメールを即時送信しました (mattom2016@gmail.com)"
+    },
+    {
+      "timestamp": "2026-08-23T02:04:13.061Z",
+      "type": "warning",
+      "message": "🧪 【動作テスト】船橋市停電アラート発火テストを実行しました。"
+    },
+    {
+      "timestamp": "2026-08-23T02:03:55.028Z",
+      "type": "success",
+      "message": "FormSubmit経由で 1件 のメールを即時送信しました (mattom2016@gmail.com)"
+    },
+    {
+      "timestamp": "2026-08-23T02:02:53.352Z",
+      "type": "info",
+      "message": "管理者 (hokensho) がログインしました。"
+    },
+    {
+      "timestamp": "2026-08-23T02:00:46.271Z",
+      "type": "info",
+      "message": "チェック完了: 千葉県全域停電件数 0軒 / 船橋市停電件数 0軒"
+    },
+    {
+      "timestamp": "2026-08-23T02:00:45.877Z",
+      "type": "info",
+      "message": "東京電力 停電情報データをチェック中... (手動実行)"
+    },
+    {
+      "timestamp": "2026-08-23T02:00:45.876Z",
+      "type": "info",
+      "message": "バックグラウンド監視タイマーを開始しました (間隔: 30分)"
+    },
+    {
+      "timestamp": "2026-08-23T02:00:45.869Z",
+      "type": "info",
+      "message": "千葉県停電監視サーバーがポート 3000 で起動しました。"
+    },
+    {
+      "timestamp": "2026-08-23T01:24:18.350Z",
+      "type": "warning",
+      "message": "メールアドレスを削除しました: tommat2022@gmail.com"
+    },
+    {
+      "timestamp": "2026-08-23T01:24:14.034Z",
+      "type": "info",
+      "message": "管理者 (hokensho) がログインしました。"
+    },
+    {
+      "timestamp": "2026-08-23T01:23:28.205Z",
+      "type": "info",
+      "message": "チェック完了: 千葉県全域停電件数 0軒 / 船橋市停電件数 0軒"
+    },
+    {
+      "timestamp": "2026-08-23T01:23:28.093Z",
+      "type": "info",
+      "message": "東京電力 停電情報データをチェック中... (手動実行)"
+    },
+    {
+      "timestamp": "2026-08-23T01:23:28.074Z",
+      "type": "info",
+      "message": "🧹 テストデータをクリアし、船橋市の停電情報を正常状態（0件）にリセットしました。"
+    },
+    {
+      "timestamp": "2026-08-23T01:23:28.060Z",
+      "type": "info",
+      "message": "管理者 (hokensho) がログインしました。"
+    },
+    {
+      "timestamp": "2026-08-23T01:23:11.417Z",
+      "type": "success",
+      "message": "FormSubmit経由で 1件 のメールを即時送信しました (mattom2016@gmail.com, tommat2022@gmail.com)"
+    },
+    {
+      "timestamp": "2026-08-23T01:23:11.416Z",
+      "type": "warning",
+      "message": "⚠️ 【重要】「tommat2022@gmail.com」宛にFormSubmitから承認メール(Activate Form)が送信されました。メールを開いてリンクを1回クリックしてください。"
+    },
+    {
+      "timestamp": "2026-08-23T01:23:09.995Z",
+      "type": "warning",
+      "message": "🧪 【動作テスト】船橋市停電アラート発火テストを実行しました。"
+    },
+    {
+      "timestamp": "2026-08-23T01:23:09.977Z",
+      "type": "info",
+      "message": "管理者 (hokensho) がログインしました。"
+    },
+    {
+      "timestamp": "2026-08-23T01:22:58.837Z",
+      "type": "info",
+      "message": "チェック完了: 千葉県全域停電件数 0軒 / 船橋市停電件数 0軒"
+    },
+    {
+      "timestamp": "2026-08-23T01:22:58.694Z",
+      "type": "info",
+      "message": "東京電力 停電情報データをチェック中... (手動実行)"
+    },
+    {
+      "timestamp": "2026-08-23T01:22:58.693Z",
+      "type": "info",
+      "message": "バックグラウンド監視タイマーを開始しました (間隔: 30分)"
+    },
+    {
+      "timestamp": "2026-08-23T01:22:58.686Z",
+      "type": "info",
+      "message": "千葉県停電監視サーバーがポート 3000 で起動しました。"
+    },
+    {
+      "timestamp": "2026-08-23T01:21:36.867Z",
+      "type": "success",
+      "message": "FormSubmit経由で 1件 のメールを即時送信しました (mattom2016@gmail.com, tommat2022@gmail.com)"
+    },
+    {
+      "timestamp": "2026-08-23T01:21:36.866Z",
+      "type": "warning",
+      "message": "⚠️ 【重要】「tommat2022@gmail.com」宛にFormSubmitから承認メール(Activate Form)が送信されました。メールを開いてリンクを1回クリックしてください。"
+    },
+    {
+      "timestamp": "2026-08-23T01:21:11.144Z",
+      "type": "info",
+      "message": "チェック完了: 千葉県全域停電件数 0軒 / 船橋市停電件数 0軒"
+    },
+    {
+      "timestamp": "2026-08-23T01:21:11.060Z",
+      "type": "info",
+      "message": "東京電力 停電情報データをチェック中... (手動実行)"
+    },
+    {
+      "timestamp": "2026-08-23T01:21:11.059Z",
+      "type": "warning",
+      "message": "🧪 【動作テスト】船橋市停電アラート発火テストを実行しました。"
+    },
+    {
+      "timestamp": "2026-08-23T01:20:50.398Z",
+      "type": "info",
+      "message": "管理者 (hokensho) がログインしました。"
+    },
+    {
+      "timestamp": "2026-08-23T01:19:53.663Z",
+      "type": "success",
+      "message": "FormSubmit経由で 1件 のメールを即時送信しました (mattom2016@gmail.com, tommat2022@gmail.com)"
+    },
+    {
+      "timestamp": "2026-08-23T01:19:53.661Z",
+      "type": "warning",
+      "message": "⚠️ 【重要】「tommat2022@gmail.com」宛にFormSubmitから承認メール(Activate Form)が送信されました。メールを開いてリンクを1回クリックしてください。"
+    },
+    {
+      "timestamp": "2026-08-23T01:19:52.000Z",
+      "type": "info",
+      "message": "管理者 (hokensho) がログインしました。"
+    },
+    {
+      "timestamp": "2026-08-23T01:19:40.238Z",
+      "type": "info",
+      "message": "チェック完了: 千葉県全域停電件数 0軒 / 船橋市停電件数 0軒"
+    },
+    {
+      "timestamp": "2026-08-23T01:19:39.942Z",
+      "type": "info",
+      "message": "東京電力 停電情報データをチェック中... (手動実行)"
+    },
+    {
+      "timestamp": "2026-08-23T01:19:39.941Z",
+      "type": "info",
+      "message": "バックグラウンド監視タイマーを開始しました (間隔: 30分)"
+    },
+    {
+      "timestamp": "2026-08-23T01:19:39.934Z",
+      "type": "info",
+      "message": "千葉県停電監視サーバーがポート 3000 で起動しました。"
+    },
+    {
+      "timestamp": "2026-08-23T01:18:26.079Z",
+      "type": "success",
+      "message": "FormSubmit経由で通知メールを即時発送しました (宛先: mattom2016@gmail.com, tommat2022@gmail.com)"
+    },
+    {
+      "timestamp": "2026-08-23T01:17:27.309Z",
+      "type": "info",
+      "message": "チェック完了: 千葉県全域停電件数 0軒 / 船橋市停電件数 0軒"
+    },
+    {
+      "timestamp": "2026-08-23T01:17:27.257Z",
+      "type": "info",
+      "message": "東京電力 停電情報データをチェック中... (手動実行)"
+    },
+    {
+      "timestamp": "2026-08-23T01:17:27.255Z",
+      "type": "warning",
+      "message": "🧪 【動作テスト】船橋市停電アラート発火テストを実行しました。"
+    },
+    {
+      "timestamp": "2026-08-23T01:17:23.673Z",
+      "type": "info",
+      "message": "管理者 (hokensho) がログインしました。"
+    },
+    {
+      "timestamp": "2026-08-23T01:16:50.145Z",
+      "type": "info",
+      "message": "チェック完了: 千葉県全域停電件数 0軒 / 船橋市停電件数 0軒"
+    },
+    {
+      "timestamp": "2026-08-23T01:16:50.081Z",
+      "type": "info",
+      "message": "東京電力 停電情報データをチェック中... (手動実行)"
+    },
+    {
+      "timestamp": "2026-08-23T01:16:50.058Z",
+      "type": "info",
+      "message": "🧹 テストデータをクリアし、船橋市の停電情報を正常状態（0件）にリセットしました。"
+    },
+    {
+      "timestamp": "2026-08-23T01:16:34.369Z",
+      "type": "info",
+      "message": "チェック完了: 千葉県全域停電件数 0軒 / 船橋市停電件数 0軒"
+    },
+    {
+      "timestamp": "2026-08-23T01:16:34.307Z",
+      "type": "info",
+      "message": "東京電力 停電情報データをチェック中... (手動実行)"
+    },
+    {
+      "timestamp": "2026-08-23T01:16:34.306Z",
+      "type": "warning",
+      "message": "🧪 【動作テスト】船橋市停電アラート発火テストを実行しました。"
+    },
+    {
+      "timestamp": "2026-08-23T01:16:34.288Z",
+      "type": "info",
+      "message": "管理者 (hokensho) がログインしました。"
+    },
+    {
+      "timestamp": "2026-08-23T01:16:14.165Z",
+      "type": "info",
+      "message": "チェック完了: 千葉県全域停電件数 0軒 / 船橋市停電件数 0軒"
+    },
+    {
+      "timestamp": "2026-08-23T01:16:14.050Z",
+      "type": "info",
+      "message": "東京電力 停電情報データをチェック中... (手動実行)"
+    },
+    {
+      "timestamp": "2026-08-23T01:16:14.049Z",
+      "type": "info",
+      "message": "バックグラウンド監視タイマーを開始しました (間隔: 30分)"
+    },
+    {
+      "timestamp": "2026-08-23T01:16:14.043Z",
+      "type": "info",
+      "message": "千葉県停電監視サーバーがポート 3000 で起動しました。"
+    },
+    {
+      "timestamp": "2026-08-23T01:13:47.115Z",
+      "type": "info",
+      "message": "チェック完了: 千葉県全域停電件数 0軒 / 船橋市停電件数 0軒"
+    },
+    {
+      "timestamp": "2026-08-23T01:13:47.056Z",
+      "type": "info",
+      "message": "東京電力 停電情報データをチェック中... (手動実行)"
+    },
+    {
+      "timestamp": "2026-08-23T01:13:47.055Z",
+      "type": "warning",
+      "message": "🧪 【動作テスト】船橋市停電アラート発火テストを実行しました。"
+    },
+    {
+      "timestamp": "2026-08-23T01:13:28.501Z",
+      "type": "info",
+      "message": "管理者 (hokensho) がログインしました。"
+    },
+    {
+      "timestamp": "2026-08-23T01:12:27.778Z",
+      "type": "success",
+      "message": "FormSubmit経由で通知メールを即時発送しました (宛先: mattom2016@gmail.com, tommat2022@gmail.com)"
+    },
+    {
+      "timestamp": "2026-08-23T01:12:26.852Z",
+      "type": "info",
+      "message": "管理者 (hokensho) がログインしました。"
+    },
+    {
+      "timestamp": "2026-08-23T01:12:16.573Z",
+      "type": "info",
+      "message": "チェック完了: 千葉県全域停電件数 0軒 / 船橋市停電件数 0軒"
+    },
+    {
+      "timestamp": "2026-08-23T01:12:16.458Z",
+      "type": "info",
+      "message": "東京電力 停電情報データをチェック中... (手動実行)"
+    },
+    {
+      "timestamp": "2026-08-23T01:12:16.458Z",
+      "type": "info",
+      "message": "バックグラウンド監視タイマーを開始しました (間隔: 30分)"
+    },
+    {
+      "timestamp": "2026-08-23T01:12:16.451Z",
+      "type": "info",
+      "message": "千葉県停電監視サーバーがポート 3000 で起動しました。"
+    },
+    {
+      "timestamp": "2026-08-23T01:07:27.079Z",
+      "type": "info",
+      "message": "チェック完了: 千葉県全域停電件数 0軒 / 船橋市停電件数 0軒"
+    },
+    {
+      "timestamp": "2026-08-23T01:07:26.965Z",
+      "type": "info",
+      "message": "東京電力 停電情報データをチェック中... (手動実行)"
+    },
+    {
+      "timestamp": "2026-08-23T01:07:26.964Z",
+      "type": "info",
+      "message": "バックグラウンド監視タイマーを開始しました (間隔: 30分)"
+    },
+    {
+      "timestamp": "2026-08-23T01:07:26.957Z",
+      "type": "info",
+      "message": "千葉県停電監視サーバーがポート 3000 で起動しました。"
+    },
+    {
+      "timestamp": "2026-08-23T01:02:42.042Z",
+      "type": "info",
+      "message": "チェック完了: 千葉県全域停電件数 0軒 / 船橋市停電件数 0軒"
+    },
+    {
+      "timestamp": "2026-08-23T01:02:41.970Z",
+      "type": "info",
+      "message": "東京電力 停電情報データをチェック中... (手動実行)"
+    },
+    {
+      "timestamp": "2026-08-23T01:02:41.969Z",
+      "type": "warning",
+      "message": "🧪 【動作テスト】船橋市停電アラート発火テストを実行しました。"
+    },
+    {
+      "timestamp": "2026-08-23T01:02:29.445Z",
+      "type": "info",
+      "message": "新しいメールアドレスを登録しました: tommat2022@gmail.com"
+    },
+    {
+      "timestamp": "2026-08-23T01:02:18.665Z",
+      "type": "info",
+      "message": "新しいメールアドレスを登録しました: mattom2016@gmail.com"
+    },
+    {
+      "timestamp": "2026-08-23T01:02:08.682Z",
+      "type": "warning",
+      "message": "メールアドレスを削除しました: example@funabashi-saigai.jp"
+    },
+    {
+      "timestamp": "2026-08-23T01:01:47.124Z",
+      "type": "info",
+      "message": "管理者 (hokensho) がログインしました。"
+    },
+    {
+      "timestamp": "2026-08-23T00:58:45.557Z",
+      "type": "info",
+      "message": "チェック完了: 千葉県全域停電件数 0軒 / 船橋市停電件数 0軒"
+    },
+    {
+      "timestamp": "2026-08-23T00:58:45.487Z",
+      "type": "info",
+      "message": "東京電力 停電情報データをチェック中... (手動実行)"
+    },
+    {
+      "timestamp": "2026-08-23T00:58:45.484Z",
+      "type": "warning",
+      "message": "🧪 【動作テスト】船橋市停電アラート発火テストを実行しました。"
+    },
+    {
+      "timestamp": "2026-08-23T00:58:45.454Z",
+      "type": "info",
+      "message": "管理者 (hokensho) がログインしました。"
+    },
+    {
+      "timestamp": "2026-08-23T00:52:40.463Z",
+      "type": "info",
+      "message": "チェック完了: 千葉県全域停電件数 0軒 / 船橋市停電件数 0軒"
+    },
+    {
+      "timestamp": "2026-08-23T00:52:39.743Z",
+      "type": "info",
+      "message": "東京電力 停電情報データをチェック中... (手動実行)"
+    },
+    {
+      "timestamp": "2026-08-23T00:52:39.742Z",
+      "type": "info",
+      "message": "バックグラウンド監視タイマーを開始しました (間隔: 30分)"
+    },
+    {
+      "timestamp": "2026-08-23T00:52:39.735Z",
+      "type": "info",
+      "message": "千葉県停電監視サーバーがポート 3000 で起動しました。"
+    },
+    {
+      "timestamp": "2026-08-23T09:52:00.000Z",
+      "type": "info",
+      "message": "🧹 停電データを正常状態（船橋市: 停電0件）に修正・リセットしました。"
+    },
+    {
+      "timestamp": "2026-08-23T00:47:31.957Z",
+      "type": "info",
+      "message": "チェック完了: 千葉県全域停電件数 0軒 / 船橋市停電件数 0軒"
+    }
+  ]
+}

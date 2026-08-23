@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>千葉県 停電監視 - 船橋市アラート</title>
+  <meta name="description" content="千葉県内の停電発生市町村および船橋市の停電アラートを即時確認できるモバイル対応アプリ">
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    /* 船橋市常時表示バナーのスタイル */
+    .funabashi-status-banner {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1rem 1.25rem;
+      border-radius: 12px;
+      text-decoration: none;
+      color: #ffffff;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+      cursor: pointer;
+      box-shadow: var(--shadow-lg);
+    }
+    
+    .funabashi-status-banner.normal {
+      background: linear-gradient(135deg, rgba(34, 197, 94, 0.25), rgba(30, 41, 59, 0.95));
+      border: 2px solid var(--success-green);
+    }
+    
+    .funabashi-status-banner.alert {
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.35), rgba(30, 41, 59, 0.95));
+      border: 2px solid var(--danger-red);
+      animation: pulse 2s infinite;
+    }
+
+    .funabashi-status-banner:active {
+      transform: scale(0.98);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ヘッダー -->
+  <header>
+    <div class="logo-container">
+      <div class="logo-icon">⚡</div>
+      <div>
+        <h1>千葉県 停電監視</h1>
+      </div>
+    </div>
+    <div>
+      <a href="/admin.html" class="nav-btn">
+        <span>⚙️ 設定・メール登録</span>
+      </a>
+    </div>
+  </header>
+
+  <!-- メインコンテンツ -->
+  <main>
+    <!-- ステータス概要バー -->
+    <div class="status-bar">
+      <div>
+        <span>最終更新: </span>
+        <strong id="last-update-time" style="color: var(--text-main);">確認中...</strong>
+      </div>
+      <div style="display: flex; align-items: center; gap: 0.5rem;">
+        <span id="monitoring-status-badge" class="status-badge normal">監視中</span>
+        <button id="refresh-btn" style="background: none; border: none; color: var(--accent-blue); font-size: 0.85rem; cursor: pointer;">🔄</button>
+      </div>
+    </div>
+
+    <!-- ★ 船橋市 停電ステータス（常にトップに簡潔に表示 & タップで東電船橋市詳細ページへ） -->
+    <div>
+      <a href="https://teideninfo.tepco.co.jp/html/12204000000.html" target="_blank" rel="noopener noreferrer" id="funabashi-banner" class="funabashi-status-banner normal">
+        <div>
+          <div id="funabashi-banner-title" style="font-size: 1.15rem; font-weight: 800; display: flex; align-items: center; gap: 0.4rem;">
+            🟢 船橋市: 停電 0 軒 (正常)
+          </div>
+          <div style="font-size: 0.75rem; color: var(--accent-blue); margin-top: 0.3rem;">
+            👉 タップで東電 船橋市の詳細ページを開く
+          </div>
+        </div>
+        <div style="text-align: right; flex-shrink: 0; margin-left: 0.5rem;">
+          <span style="font-size: 1.5rem;">🔗</span>
+        </div>
+      </a>
+    </div>
+
+    <!-- 千葉県全域 停電サマリーカード -->
+    <div class="main-card">
+      <div style="font-size: 0.95rem; font-weight: 700; color: var(--text-sub); margin-bottom: 0.75rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.4rem;">
+        <div style="display: flex; align-items: center; gap: 0.4rem;">
+          <span>📍 千葉県内 停電発生エリア</span>
+          <span id="total-outage-badge" style="font-size: 0.8rem; font-weight: bold; color: var(--accent-blue);">合計 0 軒</span>
+        </div>
+        <a href="https://teideninfo.tepco.co.jp/html/12000000000.html" target="_blank" rel="noopener noreferrer" style="font-size: 0.75rem; color: var(--accent-blue); text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 0.25rem; background: rgba(59, 130, 246, 0.12); padding: 0.3rem 0.6rem; border-radius: 6px; border: 1px solid rgba(59, 130, 246, 0.35);">
+          🌐 東電 千葉県全域ページ 🔗
+        </a>
+      </div>
+
+      <!-- 停電なしの場合（全域正常表示） -->
+      <div id="normal-status-view" class="normal-status-box">
+        <div class="normal-status-icon">✅</div>
+        <div class="normal-status-title">千葉県全域 停電なし</div>
+        <div class="normal-status-desc">現在、千葉県内で停電は報告されていません。</div>
+        <div style="margin-top: 0.75rem;">
+          <a href="https://teideninfo.tepco.co.jp/html/12000000000.html" target="_blank" rel="noopener noreferrer" style="font-size: 0.75rem; color: var(--accent-blue); text-decoration: underline;">
+            👉 東京電力公式「千葉県停電情報」サイトで直接確認する
+          </a>
+        </div>
+      </div>
+
+      <!-- 停電が発生している市町村のみリスト表示 -->
+      <div id="outage-cities-container" style="display: none;">
+        <div style="font-size: 0.8rem; color: var(--warning-amber); margin-bottom: 0.5rem; font-weight: 600;">
+          以下の市町村で停電が発生しています：
+        </div>
+        <div id="outage-city-list" class="outage-city-list">
+          <!-- 停電のある市町村のみ動的挿入 -->
+        </div>
+        <div style="margin-top: 0.75rem; text-align: center;">
+          <a href="https://teideninfo.tepco.co.jp/html/12000000000.html" target="_blank" rel="noopener noreferrer" style="font-size: 0.75rem; color: var(--accent-blue); text-decoration: underline;">
+            👉 東京電力公式「千葉県停電情報」サイトを開く 🌐
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- 監視ログ -->
+    <div class="log-card">
+      <div style="font-size: 0.85rem; font-weight: 700; color: var(--text-sub); margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center;">
+        <span>📜 バックグラウンド監視ログ</span>
+        <span id="log-count" style="font-size: 0.75rem; color: var(--text-sub);">0件</span>
+      </div>
+      <div class="log-container" id="log-list">
+        <div class="log-item"><span class="log-msg info">ログを取得中...</span></div>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <p>千葉県停電情報監視 &copy; 2026 | 東京電力パワーグリッド連携</p>
+  </footer>
+
+  <script>
+    async function fetchStatus() {
+      try {
+        const response = await fetch('/api/status');
+        if (!response.ok) throw new Error('データ取得失敗');
+        const data = await response.json();
+
+        // 最終更新時刻 & 監視状態
+        document.getElementById('last-update-time').innerText = data.lastCheck ? new Date(data.lastCheck).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '未実行';
+        
+        const statusBadge = document.getElementById('monitoring-status-badge');
+        if (data.isMonitoringActive) {
+          statusBadge.innerText = `監視中 (${data.intervalMinutes}分)`;
+          statusBadge.className = 'status-badge normal';
+        } else {
+          statusBadge.innerText = '監視停止中';
+          statusBadge.className = 'status-badge alert';
+        }
+
+        // 船橋市のステータス更新（常時表示）
+        const funabashi = data.funabashi || { count: 0 };
+        const fBanner = document.getElementById('funabashi-banner');
+        const fTitle = document.getElementById('funabashi-banner-title');
+
+        if (funabashi.count > 0) {
+          fBanner.className = 'funabashi-status-banner alert';
+          fTitle.innerHTML = `🚨 船橋市: 停電 ${funabashi.count.toLocaleString()} 軒 (停電発生中！)`;
+        } else {
+          fBanner.className = 'funabashi-status-banner normal';
+          fTitle.innerHTML = `🟢 船橋市: 停電 0 軒 (正常)`;
+        }
+
+        // 千葉県全域の停電発生市町村
+        const cities = data.cities || [];
+        const outageCities = cities.filter(c => c.count > 0);
+        const totalCount = data.totalChibaCount || 0;
+
+        document.getElementById('total-outage-badge').innerText = `合計 ${totalCount.toLocaleString()} 軒`;
+
+        const normalView = document.getElementById('normal-status-view');
+        const outageContainer = document.getElementById('outage-cities-container');
+        const cityListEl = document.getElementById('outage-city-list');
+
+        if (outageCities.length === 0) {
+          normalView.style.display = 'block';
+          outageContainer.style.display = 'none';
+        } else {
+          normalView.style.display = 'none';
+          outageContainer.style.display = 'block';
+
+          cityListEl.innerHTML = outageCities.map(city => {
+            const isFunabashi = city.name.includes('船橋');
+            if (isFunabashi) {
+              return `
+                <a href="https://teideninfo.tepco.co.jp/html/12204000000.html" target="_blank" rel="noopener noreferrer" class="outage-city-item is-funabashi" style="text-decoration: none; color: inherit;">
+                  <div class="outage-city-name" style="color: var(--danger-red);">
+                    🚨 <strong>${city.name}</strong>
+                    <span style="font-size: 0.75rem; color: var(--accent-blue); font-weight: normal;">(タップで東電詳細へ)</span>
+                  </div>
+                  <div class="outage-city-count">${city.count.toLocaleString()} <span style="font-size:0.75rem;">軒</span></div>
+                </a>
+              `;
+            } else {
+              return `
+                <div class="outage-city-item">
+                  <div class="outage-city-name">⚡ ${city.name}</div>
+                  <div class="outage-city-count">${city.count.toLocaleString()} <span style="font-size:0.75rem;">軒</span></div>
+                </div>
+              `;
+            }
+          }).join('');
+        }
+
+        // 監視ログ（直近30件）
+        const logs = data.logs || [];
+        document.getElementById('log-count').innerText = logs.length + '件';
+        const logList = document.getElementById('log-list');
+        if (logs.length === 0) {
+          logList.innerHTML = '<div class="log-item"><span class="log-msg info">まだログはありません。</span></div>';
+        } else {
+          logList.innerHTML = logs.slice(0, 30).map(log => `
+            <div class="log-item">
+              <span class="log-time">[${new Date(log.timestamp).toLocaleTimeString('ja-JP')}]</span>
+              <span class="log-msg ${log.type || 'info'}">${log.message}</span>
+            </div>
+          `).join('');
+        }
+
+      } catch (err) {
+        console.error('Fetch status error:', err);
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      fetchStatus();
+      setInterval(fetchStatus, 10000);
+      document.getElementById('refresh-btn').addEventListener('click', fetchStatus);
+    });
+  </script>
+</body>
+</html>
