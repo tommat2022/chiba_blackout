@@ -586,43 +586,68 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // 9. 動作確認テスト：船橋市停電アラート発火テスト (要ログイン)
+  // 9. 動作確認テスト：停電アラート発火テスト (選択中の対象範囲に応じて即時実行)
   if (pathname === '/api/test-alert' && req.method === 'POST') {
     if (!isAuthenticated(req)) return sendJson(401, { error: 'ログインが必要です' });
     (async () => {
-      addLog('🧪 【動作テスト】船橋市停電アラート発火テストを実行しました。', 'warning');
+      const target = store.alertTarget || 'funabashi';
+      addLog(`🧪 【動作テスト】アラート発火テストを実行しました (対象範囲: ${target})`, 'warning');
       
-      // テスト用擬似停電データ設定（船橋市: 1,200件）
-      const testCount = 1200;
-      const testAreas = ['船橋市本町1丁目', '船橋市湊町2丁目', '船橋市海神3丁目'];
+      let subject = '';
+      let message = '';
+      let targetName = '';
 
-      store.funabashi = { count: testCount, areas: testAreas };
-      
-      const fCity = store.cities.find(c => c.name && c.name.includes('船橋'));
-      if (fCity) {
-        fCity.count = testCount;
-        fCity.areas = testAreas;
+      if (target === 'chiba') {
+        targetName = '千葉県全域';
+        const testCount = 2500;
+        store.previousChibaCount = testCount;
+        subject = `【ハッカテスト中】千葉県全域 停電情報更新 (2,500軒)`;
+        message = `[動作テスト] 千葉県全域で停電発生を検知した想定のテスト通知です。\n\n` +
+                  `■ 千葉県全域 停電件数: ${testCount} 軒 (前回: 0 軒)\n` +
+                  `■ 船橋市 停電件数: 1,200 軒\n` +
+                  `■ 判定時刻: ${new Date().toLocaleString('ja-JP')}\n\n` +
+                  `https://teideninfo.tepco.co.jp/html/12000000000.html`;
+      } else if (target === 'kanto') {
+        targetName = '関東全域';
+        const testCount = 5000;
+        store.previousKantoCount = testCount;
+        subject = `【ハッカテスト中】関東全域 停電情報更新 (5,000軒)`;
+        message = `[動作テスト] 関東全域エリアで停電発生を検知した想定のテスト通知です。\n\n` +
+                  `■ 関東全域 停電件数: ${testCount} 軒 (前回: 0 軒)\n` +
+                  `■ 千葉県全域 停電件数: 2,500 軒\n` +
+                  `■ 船橋市 停電件数: 1,200 軒\n` +
+                  `■ 判定時刻: ${new Date().toLocaleString('ja-JP')}\n\n` +
+                  `https://teideninfo.tepco.co.jp/html/00000000000.html`;
       } else {
-        store.cities.unshift({ name: '船橋市', count: testCount, areas: testAreas });
+        targetName = '船橋市';
+        const testCount = 1200;
+        const testAreas = ['船橋市本町1丁目', '船橋市湊町2丁目', '船橋市海神3丁目'];
+        store.funabashi = { count: testCount, areas: testAreas };
+        store.previousFunabashiCount = testCount;
+        
+        const fCity = store.cities.find(c => c.name && c.name.includes('船橋'));
+        if (fCity) {
+          fCity.count = testCount;
+          fCity.areas = testAreas;
+        } else {
+          store.cities.unshift({ name: '船橋市', count: testCount, areas: testAreas });
+        }
+
+        subject = `【ハッカテスト中】船橋市 停電情報更新 (1,200軒)`;
+        message = `[動作テスト] 船橋市内で停電発生を検知した想定のテスト通知です。\n\n` +
+                  `■ 船橋市 停電件数: ${testCount} 軒 (前回: 0 軒)\n` +
+                  `■ 該当地域: ${testAreas.join(', ')}\n` +
+                  `■ 判定時刻: ${new Date().toLocaleString('ja-JP')}\n\n` +
+                  `https://teideninfo.tepco.co.jp/html/12204000000.html`;
       }
 
       store.lastCheck = new Date().toISOString();
-      store.previousFunabashiCount = testCount;
       saveStore();
-
-      // 緊急アラートメール本文作成＆送信（件名に「【ハッカテスト中】」を明記）
-      const subject = `【ハッカテスト中】船橋市 停電情報更新 (1,200軒)`;
-      const message = `[動作テスト] 船橋市内で停電発生を検知した想定のテスト通知です。\n\n` +
-                    `■ 船橋市 停電件数: ${testCount} 軒 (前回: 0 軒)\n` +
-                    `■ 該当地域: ${testAreas.join(', ')}\n` +
-                    `■ 判定時刻: ${new Date().toLocaleString('ja-JP')}\n\n` +
-                    `詳細情報は東京電力ウェブサイトまたはアプリで確認してください。\n` +
-                    `https://teideninfo.tepco.co.jp/html/12204000000.html`;
 
       const sendResult = await sendEmailNotification(subject, message);
 
       if (sendResult.success) {
-        return sendJson(200, { message: `🚨 船橋市停電アラート発火テストを実行し、登録メールへ緊急通知を直接送信しました！` });
+        return sendJson(200, { message: `🚨 「${targetName}」設定での停電アラート発火テストを実行し、緊急通知を送信しました！` });
       } else {
         return sendJson(200, { message: `🚨 アラートテストを実行しました。ステータス: ${sendResult.message}` });
       }
