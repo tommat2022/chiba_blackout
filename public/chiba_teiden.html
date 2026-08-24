@@ -125,6 +125,46 @@
       </div>
     </div>
 
+    <!-- ★ 関東全域 停電サマリーカード -->
+    <div class="main-card">
+      <div style="font-size: 0.95rem; font-weight: 700; color: var(--text-sub); margin-bottom: 0.75rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.4rem;">
+        <div style="display: flex; align-items: center; gap: 0.4rem;">
+          <span>📍 関東全域 停電発生エリア</span>
+          <span id="kanto-total-outage-badge" style="font-size: 0.8rem; font-weight: bold; color: var(--accent-blue);">合計 0 軒</span>
+        </div>
+        <a href="https://teideninfo.tepco.co.jp/html/00000000000.html" target="_blank" rel="noopener noreferrer" style="font-size: 0.75rem; color: var(--accent-blue); text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 0.25rem; background: rgba(59, 130, 246, 0.12); padding: 0.3rem 0.6rem; border-radius: 6px; border: 1px solid rgba(59, 130, 246, 0.35);">
+          🌐 東電 関東全域ページ 🔗
+        </a>
+      </div>
+
+      <!-- 関東 停電なしの場合（全域正常表示） -->
+      <div id="kanto-normal-status-view" class="normal-status-box">
+        <div class="normal-status-icon">✅</div>
+        <div class="normal-status-title">関東全域 停電なし</div>
+        <div class="normal-status-desc">現在、関東エリア全域で停電は報告されていません。</div>
+        <div style="margin-top: 0.75rem;">
+          <a href="https://teideninfo.tepco.co.jp/html/00000000000.html" target="_blank" rel="noopener noreferrer" style="font-size: 0.75rem; color: var(--accent-blue); text-decoration: underline;">
+            👉 東京電力公式「関東全域停電情報」サイトで直接確認する
+          </a>
+        </div>
+      </div>
+
+      <!-- 関東 停電が発生している都県のみリスト表示 -->
+      <div id="kanto-outage-container" style="display: none;">
+        <div style="font-size: 0.8rem; color: var(--warning-amber); margin-bottom: 0.5rem; font-weight: 600;">
+          以下の都県で停電が発生しています：
+        </div>
+        <div id="kanto-outage-list" class="outage-city-list">
+          <!-- 停電のある都県のみ動的挿入 -->
+        </div>
+        <div style="margin-top: 0.75rem; text-align: center;">
+          <a href="https://teideninfo.tepco.co.jp/html/00000000000.html" target="_blank" rel="noopener noreferrer" style="font-size: 0.75rem; color: var(--accent-blue); text-decoration: underline;">
+            👉 東京電力公式「関東全域停電情報」サイトを開く 🌐
+          </a>
+        </div>
+      </div>
+    </div>
+
     <!-- 監視ログ -->
     <div class="log-card">
       <div style="font-size: 0.85rem; font-weight: 700; color: var(--text-sub); margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center;">
@@ -212,6 +252,32 @@
               `;
             }
           }).join('');
+        }
+
+        // 関東全域の停電発生都県
+        const kanto = data.kanto || [];
+        const outageKanto = kanto.filter(k => k.count > 0);
+        const totalKantoCount = data.totalKantoCount || 0;
+
+        document.getElementById('kanto-total-outage-badge').innerText = `合計 ${totalKantoCount.toLocaleString()} 軒`;
+
+        const kantoNormalView = document.getElementById('kanto-normal-status-view');
+        const kantoOutageContainer = document.getElementById('kanto-outage-container');
+        const kantoListEl = document.getElementById('kanto-outage-list');
+
+        if (outageKanto.length === 0) {
+          kantoNormalView.style.display = 'block';
+          kantoOutageContainer.style.display = 'none';
+        } else {
+          kantoNormalView.style.display = 'none';
+          kantoOutageContainer.style.display = 'block';
+
+          kantoListEl.innerHTML = outageKanto.map(pref => `
+            <div class="outage-city-item">
+              <div class="outage-city-name">⚡ ${pref.name}</div>
+              <div class="outage-city-count">${pref.count.toLocaleString()} <span style="font-size:0.75rem;">軒</span></div>
+            </div>
+          `).join('');
         }
 
         // 監視ログ（直近30件）
