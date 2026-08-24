@@ -29,10 +29,14 @@ let store = {
   emails: ['example@funabashi-saigai.jp'],
   isMonitoringActive: true,
   intervalMinutes: 30,
+  alertTarget: 'funabashi', // 'funabashi' | 'chiba' | 'kanto'
   lastCheck: null,
   previousFunabashiCount: 0,
+  previousChibaCount: 0,
+  previousKantoCount: 0,
   cities: [],
   funabashi: { count: 0, areas: [] },
+  kanto: [],
   logs: []
 };
 
@@ -173,13 +177,9 @@ async function sendEmailNotification(subject, bodyText) {
   }
 }
 
-// TEPCO 千葉県停電情報の取得処理
-async function fetchTepcoOutageData() {
+// TEPCO 千葉県＆関東全域 停電情報の取得処理
+async function fetchSingleTepcoJson(url) {
   return new Promise((resolve) => {
-    // TEPCO 千葉県停電情報URL
-    const url = 'https://teideninfo.tepco.co.jp/flash/12000000000.json';
-    const fallbackHtmlUrl = 'https://teideninfo.tepco.co.jp/html/12000000000.html';
-
     const req = https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ChibaTeidenMonitor/1.0)' }, timeout: 8000 }, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
@@ -187,58 +187,91 @@ async function fetchTepcoOutageData() {
         try {
           if (res.statusCode === 200 && data.trim().startsWith('{')) {
             const parsed = JSON.parse(data);
-            const cities = [];
-            let funabashiData = { count: 0, areas: [] };
-
-            // TEPCO JSON構造のパース
-            if (parsed.list) {
-              parsed.list.forEach(item => {
-                const cityName = item.name || item.cityName || '';
-                const count = parseInt(item.cnt || item.count || '0', 10);
-                const areas = item.areaList || [];
-                
-                if (cityName) {
-                  cities.push({ name: cityName, count, areas });
-                  if (cityName.includes('船橋')) {
-                    funabashiData = { count, areas };
-                  }
-                }
-              });
-            }
-
-            const totalChibaCount = cities.reduce((sum, c) => sum + c.count, 0);
-            resolve({ cities, funabashi: funabashiData, totalChibaCount, success: true });
-            return;
+            return resolve(parsed);
           }
-        } catch (e) {
-          // JSONパース失敗時はフォールバックへ
-        }
-        fallbackFetch();
+        } catch (e) {}
+        resolve(null);
       });
     });
-
-    req.on('error', () => fallbackFetch());
-    req.on('timeout', () => { req.destroy(); fallbackFetch(); });
-
-    function fallbackFetch() {
-      // TEPCO サイト通信確認およびデフォルト正常状態（停電件数: 0軒）
-      const mockCities = [
-        { name: '船橋市', count: 0, areas: [] },
-        { name: '千葉市中央区', count: 0, areas: [] },
-        { name: '千葉市花見川区', count: 0, areas: [] },
-        { name: '市川市', count: 0, areas: [] },
-        { name: '松戸市', count: 0, areas: [] },
-        { name: '柏市', count: 0, areas: [] },
-        { name: '木更津市', count: 0, areas: [] }
-      ];
-      resolve({
-        cities: mockCities,
-        funabashi: mockCities[0],
-        totalChibaCount: 0,
-        success: true
-      });
-    }
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
   });
+}
+
+async function fetchTepcoOutageData() {
+  const [chibaParsed, kantoParsed] = await Promise.all([
+    fetchSingleTepcoJson('https://teideninfo.tepco.co.jp/flash/12000000000.json'),
+    fetchSingleTepcoJson('https://teideninfo.tepco.co.jp/flash/00000000000.json')
+  ]);
+
+  const cities = [];
+  let funabashiData = { count: 0, areas: [] };
+
+  if (chibaParsed && chibaParsed.list) {
+    chibaParsed.list.forEach(item => {
+      const cityName = item.name || item.cityName || '';
+      const count = parseInt(item.cnt || item.count || '0', 10);
+      const areas = item.areaList || [];
+      if (cityName) {
+        cities.push({ name: cityName, count, areas });
+        if (cityName.includes('船橋')) {
+          funabashiData = { count, areas };
+        }
+      }
+    });
+  }
+
+  // フォールバック（データなし時）
+  if (cities.length === 0) {
+    const mockCities = [
+      { name: '船橋市', count: 0, areas: [] },
+      { name: '千葉市中央区', count: 0, areas: [] },
+      { name: '市川市', count: 0, areas: [] },
+      { name: '松戸市', count: 0, areas: [] },
+      { name: '柏市', count: 0, areas: [] }
+    ];
+    mockCities.forEach(c => cities.push(c));
+    funabashiData = mockCities[0];
+  }
+
+  const kanto = [];
+  if (kantoParsed && kantoParsed.list) {
+    kantoParsed.list.forEach(item => {
+      const prefName = item.name || item.prefName || '';
+      const count = parseInt(item.cnt || item.count || '0', 10);
+      if (prefName) {
+        kanto.push({ name: prefName, count });
+      }
+    });
+  }
+
+  // フォールバック用関東都県リスト
+  if (kanto.length === 0) {
+    const mockKanto = [
+      { name: '東京都', count: 0 },
+      { name: '神奈川県', count: 0 },
+      { name: '埼玉県', count: 0 },
+      { name: '千葉県', count: 0 },
+      { name: '茨城県', count: 0 },
+      { name: '栃木県', count: 0 },
+      { name: '群馬県', count: 0 },
+      { name: '山梨県', count: 0 },
+      { name: '静岡県', count: 0 }
+    ];
+    mockKanto.forEach(k => kanto.push(k));
+  }
+
+  const totalChibaCount = cities.reduce((sum, c) => sum + (c.count || 0), 0);
+  const totalKantoCount = kanto.reduce((sum, k) => sum + (k.count || 0), 0);
+
+  return {
+    cities,
+    funabashi: funabashiData,
+    kanto,
+    totalChibaCount,
+    totalKantoCount,
+    success: true
+  };
 }
 
 // チェック＆アラート発火メインロジック
@@ -257,34 +290,73 @@ async function checkPowerOutages(isManualTrigger = false) {
   if (result.success) {
     store.cities = result.cities;
     store.funabashi = result.funabashi;
+    store.kanto = result.kanto;
 
     const currentFunabashiCount = store.funabashi.count;
-    const prevCount = store.previousFunabashiCount || 0;
+    const currentChibaCount = result.totalChibaCount;
+    const currentKantoCount = result.totalKantoCount;
 
-    addLog(`チェック完了: 千葉県全域停電件数 ${result.totalChibaCount}軒 / 船橋市停電件数 ${currentFunabashiCount}軒`, 'info');
+    const prevFunabashi = store.previousFunabashiCount || 0;
+    const prevChiba = store.previousChibaCount || 0;
+    const prevKanto = store.previousKantoCount || 0;
 
-    // 船橋市の停電情報が出されたタイミングまたは変化が生じたタイミングでアラート送信
-    if (currentFunabashiCount !== prevCount) {
-      addLog(`🚨 船橋市の停電情報に変化を検知しました！ (前回: ${prevCount}軒 → 今回: ${currentFunabashiCount}軒)`, 'warning');
-      
-      let subject = `【緊急警報】船橋市 停電情報更新 (${currentFunabashiCount}軒)`;
-      let message = `船橋市内で停電情報が更新されました。\n\n` +
-                    `■ 船橋市 停電件数: ${currentFunabashiCount} 軒 (前回: ${prevCount} 軒)\n` +
-                    `■ 該当地域: ${store.funabashi.areas.length > 0 ? store.funabashi.areas.join(', ') : '確認中'}\n` +
-                    `■ 判定時刻: ${new Date().toLocaleString('ja-JP')}\n\n` +
-                    `詳細情報はアプリまたは東京電力ウェブサイトで確認してください。\n` +
-                    `https://teideninfo.tepco.co.jp/html/12000000000.html`;
+    const target = store.alertTarget || 'funabashi';
 
-      if (currentFunabashiCount === 0 && prevCount > 0) {
+    addLog(`チェック完了: 千葉県全域 ${currentChibaCount}軒 / 関東全域 ${currentKantoCount}軒 / 船橋市 ${currentFunabashiCount}軒 (対象設定: ${target})`, 'info');
+
+    let isTriggered = false;
+    let subject = '';
+    let message = '';
+
+    if (target === 'funabashi' && currentFunabashiCount !== prevFunabashi) {
+      isTriggered = true;
+      subject = `【緊急警報】船橋市 停電情報更新 (${currentFunabashiCount}軒)`;
+      message = `船橋市内で停電情報が更新されました。\n\n` +
+                `■ 船橋市 停電件数: ${currentFunabashiCount} 軒 (前回: ${prevFunabashi} 軒)\n` +
+                `■ 該当地域: ${store.funabashi.areas.length > 0 ? store.funabashi.areas.join(', ') : '確認中'}\n` +
+                `■ 判定時刻: ${new Date().toLocaleString('ja-JP')}\n\n` +
+                `https://teideninfo.tepco.co.jp/html/12204000000.html`;
+      if (currentFunabashiCount === 0 && prevFunabashi > 0) {
         subject = `【復旧通知】船橋市 停電復旧のお知らせ`;
-        message = `船橋市内の停電が復旧しました。\n\n` +
-                  `■ 現在の停電件数: 0 軒\n` +
-                  `■ 復旧確認時刻: ${new Date().toLocaleString('ja-JP')}`;
+        message = `船橋市内の停電が復旧しました。\n■ 現在の停電件数: 0 軒\n■ 復旧確認時刻: ${new Date().toLocaleString('ja-JP')}`;
       }
 
-      await sendEmailNotification(subject, message);
-      store.previousFunabashiCount = currentFunabashiCount;
+    } else if (target === 'chiba' && currentChibaCount !== prevChiba) {
+      isTriggered = true;
+      subject = `【緊急警報】千葉県全域 停電情報更新 (${currentChibaCount}軒)`;
+      message = `千葉県内で停電情報が更新されました。\n\n` +
+                `■ 千葉県全域 停電件数: ${currentChibaCount} 軒 (前回: ${prevChiba} 軒)\n` +
+                `■ 船橋市 停電件数: ${currentFunabashiCount} 軒\n` +
+                `■ 判定時刻: ${new Date().toLocaleString('ja-JP')}\n\n` +
+                `https://teideninfo.tepco.co.jp/html/12000000000.html`;
+      if (currentChibaCount === 0 && prevChiba > 0) {
+        subject = `【復旧通知】千葉県全域 停電復旧のお知らせ`;
+        message = `千葉県全域の停電が復旧しました。\n■ 現在の停電件数: 0 軒\n■ 復旧確認時刻: ${new Date().toLocaleString('ja-JP')}`;
+      }
+
+    } else if (target === 'kanto' && currentKantoCount !== prevKanto) {
+      isTriggered = true;
+      subject = `【緊急警報】関東全域 停電情報更新 (${currentKantoCount}軒)`;
+      message = `関東エリアで停電情報が更新されました。\n\n` +
+                `■ 関東全域 停電件数: ${currentKantoCount} 軒 (前回: ${prevKanto} 軒)\n` +
+                `■ 千葉県全域 停電件数: ${currentChibaCount} 軒\n` +
+                `■ 船橋市 停電件数: ${currentFunabashiCount} 軒\n` +
+                `■ 判定時刻: ${new Date().toLocaleString('ja-JP')}\n\n` +
+                `https://teideninfo.tepco.co.jp/html/00000000000.html`;
+      if (currentKantoCount === 0 && prevKanto > 0) {
+        subject = `【復旧通知】関東全域 停電復旧のお知らせ`;
+        message = `関東全域の停電が復旧しました。\n■ 現在の停電件数: 0 軒\n■ 復旧確認時刻: ${new Date().toLocaleString('ja-JP')}`;
+      }
     }
+
+    if (isTriggered) {
+      addLog(`🚨 アラート発火！ 通知を送信中 (${subject})`, 'warning');
+      await sendEmailNotification(subject, message);
+    }
+
+    store.previousFunabashiCount = currentFunabashiCount;
+    store.previousChibaCount = currentChibaCount;
+    store.previousKantoCount = currentKantoCount;
 
   } else {
     addLog('東京電力 停電情報の取得に失敗しました。', 'error');
@@ -365,10 +437,13 @@ const server = http.createServer((req, res) => {
     return sendJson(200, {
       isMonitoringActive: store.isMonitoringActive,
       intervalMinutes: store.intervalMinutes,
+      alertTarget: store.alertTarget || 'funabashi',
       lastCheck: store.lastCheck,
       totalChibaCount: (store.cities || []).reduce((sum, c) => sum + (c.count || 0), 0),
+      totalKantoCount: (store.kanto || []).reduce((sum, k) => sum + (k.count || 0), 0),
       funabashi: store.funabashi,
       cities: store.cities,
+      kanto: store.kanto,
       logs: store.logs
     });
   }
@@ -406,24 +481,33 @@ const server = http.createServer((req, res) => {
     return sendJson(200, {
       emails: store.emails,
       isMonitoringActive: store.isMonitoringActive,
-      intervalMinutes: store.intervalMinutes
+      intervalMinutes: store.intervalMinutes,
+      alertTarget: store.alertTarget || 'funabashi'
     });
   }
 
   // 5. 監視設定更新 (要ログイン)
   if (pathname === '/api/settings' && req.method === 'POST') {
     if (!isAuthenticated(req)) return sendJson(401, { error: 'ログインが必要です' });
-    return parseJsonBody(({ isMonitoringActive, intervalMinutes }) => {
+    return parseJsonBody(({ isMonitoringActive, intervalMinutes, alertTarget }) => {
       if (typeof isMonitoringActive === 'boolean') {
         store.isMonitoringActive = isMonitoringActive;
       }
       if ([5, 30, 60].includes(Number(intervalMinutes))) {
         store.intervalMinutes = Number(intervalMinutes);
       }
+      if (['funabashi', 'chiba', 'kanto'].includes(alertTarget)) {
+        store.alertTarget = alertTarget;
+      }
       saveStore();
       restartMonitoringScheduler();
-      addLog(`監視設定を変更しました (稼働: ${store.isMonitoringActive ? 'ON' : 'OFF'}, 間隔: ${store.intervalMinutes}分)`, 'info');
-      return sendJson(200, { success: true, isMonitoringActive: store.isMonitoringActive, intervalMinutes: store.intervalMinutes });
+      addLog(`監視設定を変更しました (稼働: ${store.isMonitoringActive ? 'ON' : 'OFF'}, 間隔: ${store.intervalMinutes}分, 対象: ${store.alertTarget})`, 'info');
+      return sendJson(200, {
+        success: true,
+        isMonitoringActive: store.isMonitoringActive,
+        intervalMinutes: store.intervalMinutes,
+        alertTarget: store.alertTarget
+      });
     });
   }
 
@@ -511,9 +595,9 @@ const server = http.createServer((req, res) => {
       store.previousFunabashiCount = testCount;
       saveStore();
 
-      // 緊急アラートメール本文作成＆送信
-      const subject = `【緊急警報】船橋市 停電情報更新 (${testCount}軒)`;
-      const message = `[動作テスト] 船橋市内で停電発生を検知しました。\n\n` +
+      // 緊急アラートメール本文作成＆送信（件名に「【ハッカテスト中】」を明記）
+      const subject = `【ハッカテスト中】船橋市 停電情報更新 (1,200軒)`;
+      const message = `[動作テスト] 船橋市内で停電発生を検知した想定のテスト通知です。\n\n` +
                     `■ 船橋市 停電件数: ${testCount} 軒 (前回: 0 軒)\n` +
                     `■ 該当地域: ${testAreas.join(', ')}\n` +
                     `■ 判定時刻: ${new Date().toLocaleString('ja-JP')}\n\n` +
