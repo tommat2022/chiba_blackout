@@ -153,8 +153,14 @@
             📧 テストメールを送信 (FormSubmit経由)
           </button>
           <button id="test-funabashi-alert-btn" class="btn btn-warning">
-            🚨 船橋市 停電アラートテスト発火
+            🚨 船橋市 停電アラートテスト発火 (即時送信)
           </button>
+          <button id="simulate-next-check-btn" class="btn btn-warning" style="background: linear-gradient(135deg, #d97706, #b45309);">
+            🧪 1回限定 自動検知シミュレーション予約
+          </button>
+          <div style="font-size: 0.72rem; color: var(--text-sub); padding: 0.3rem 0.5rem; background: var(--bg-primary); border-radius: 6px; border: 1px dashed var(--border-color);">
+            ※「1回限定予約」を押すと、次回の定期チェック（またはTOP画面の更新）時に、東電から船橋市停電1,500軒が届いた状態を再現し、定期監視システムが自動検知してメール送信する挙動を検証できます。
+          </div>
           <button id="clear-test-btn" class="btn btn-secondary">
             🧹 停電データを正常（0件）に復帰
           </button>
@@ -354,6 +360,16 @@
         const res = await fetch('/api/test-alert', { method: 'POST' });
         const data = await res.json();
         showAlert('test-alert', res.ok ? '🚨 ' + data.message : '❌ ' + data.error, !res.ok);
+      } catch (err) {
+        showAlert('test-alert', '通信エラー', true);
+      }
+    });
+
+    document.getElementById('simulate-next-check-btn').addEventListener('click', async () => {
+      try {
+        const res = await fetch('/api/simulate-next-check', { method: 'POST' });
+        const data = await res.json();
+        showAlert('test-alert', res.ok ? '🧪 ' + data.message : '❌ ' + data.error, !res.ok);
       } catch (err) {
         showAlert('test-alert', '通信エラー', true);
       }
