@@ -178,19 +178,25 @@ async function sendEmailNotification(subject, bodyText) {
   }
 }
 
-// TEPCO 千葉県＆関東全域 停電情報の取得処理
-async function fetchSingleTepcoJson(url) {
+// TEPCO 千葉県＆関東全域 XML 停電情報の取得処理 (Cookie認証ヘッダー必須)
+async function fetchSingleTepcoXml(url) {
   return new Promise((resolve) => {
-    const req = https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ChibaTeidenMonitor/1.0)' }, timeout: 8000 }, (res) => {
+    const options = {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Cookie': 'teideninfo-auth=sk3PT518',
+        'Accept': 'text/xml,application/xml,application/xhtml+xml,text/html;q=0.9,*/*;q=0.8'
+      },
+      timeout: 10000
+    };
+
+    const req = https.get(url, options, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
-        try {
-          if (res.statusCode === 200 && data.trim().startsWith('{')) {
-            const parsed = JSON.parse(data);
-            return resolve(parsed);
-          }
-        } catch (e) {}
+        if (res.statusCode === 200 && data.includes('<東京電力停電情報>')) {
+          return resolve(data);
+        }
         resolve(null);
       });
     });
@@ -199,67 +205,42 @@ async function fetchSingleTepcoJson(url) {
   });
 }
 
+function parseXmlAreas(xmlString) {
+  if (!xmlString) return [];
+  const items = [];
+  const areaMatches = xmlString.match(/<エリア[^>]*>[\s\S]*?<\/エリア>/g) || [];
+  for (const areaXml of areaMatches) {
+    const nameMatch = areaXml.match(/<名前>(.*?)<\/名前>/);
+    const countMatch = areaXml.match(/<停電軒数>(\d+)<\/停電軒数>/);
+    if (nameMatch) {
+      const name = nameMatch[1].trim();
+      const count = countMatch ? parseInt(countMatch[1], 10) : 0;
+      items.push({ name, count, areas: [] });
+    }
+  }
+  return items;
+}
+
 async function fetchTepcoOutageData() {
-  const [chibaParsed, kantoParsed] = await Promise.all([
-    fetchSingleTepcoJson('https://teideninfo.tepco.co.jp/flash/12000000000.json'),
-    fetchSingleTepcoJson('https://teideninfo.tepco.co.jp/flash/00000000000.json')
+  const [chibaXml, kantoXml] = await Promise.all([
+    fetchSingleTepcoXml('https://teideninfo.tepco.co.jp/flash/xml/12000000000.xml'),
+    fetchSingleTepcoXml('https://teideninfo.tepco.co.jp/flash/xml/00000000000.xml')
   ]);
 
-  const cities = [];
-  let funabashiData = { count: 0, areas: [] };
+  const cities = parseXmlAreas(chibaXml);
+  let funabashiData = cities.find(c => c.name && c.name.includes('船橋')) || { name: '船橋市', count: 0, areas: [] };
 
-  if (chibaParsed && chibaParsed.list) {
-    chibaParsed.list.forEach(item => {
-      const cityName = item.name || item.cityName || '';
-      const count = parseInt(item.cnt || item.count || '0', 10);
-      const areas = item.areaList || [];
-      if (cityName) {
-        cities.push({ name: cityName, count, areas });
-        if (cityName.includes('船橋')) {
-          funabashiData = { count, areas };
-        }
-      }
-    });
-  }
-
-  // フォールバック（データなし時）
+  // データ取得失敗時のデフォルト補完
   if (cities.length === 0) {
-    const mockCities = [
-      { name: '船橋市', count: 0, areas: [] },
-      { name: '千葉市中央区', count: 0, areas: [] },
-      { name: '市川市', count: 0, areas: [] },
-      { name: '松戸市', count: 0, areas: [] },
-      { name: '柏市', count: 0, areas: [] }
-    ];
-    mockCities.forEach(c => cities.push(c));
-    funabashiData = mockCities[0];
+    const defaultCities = ['船橋市', '千葉市中央区', '市川市', '松戸市', '柏市', '木更津市'];
+    defaultCities.forEach(name => cities.push({ name, count: 0, areas: [] }));
+    funabashiData = cities[0];
   }
 
-  const kanto = [];
-  if (kantoParsed && kantoParsed.list) {
-    kantoParsed.list.forEach(item => {
-      const prefName = item.name || item.prefName || '';
-      const count = parseInt(item.cnt || item.count || '0', 10);
-      if (prefName) {
-        kanto.push({ name: prefName, count });
-      }
-    });
-  }
-
-  // フォールバック用関東都県リスト
+  const kanto = parseXmlAreas(kantoXml);
   if (kanto.length === 0) {
-    const mockKanto = [
-      { name: '東京都', count: 0 },
-      { name: '神奈川県', count: 0 },
-      { name: '埼玉県', count: 0 },
-      { name: '千葉県', count: 0 },
-      { name: '茨城県', count: 0 },
-      { name: '栃木県', count: 0 },
-      { name: '群馬県', count: 0 },
-      { name: '山梨県', count: 0 },
-      { name: '静岡県', count: 0 }
-    ];
-    mockKanto.forEach(k => kanto.push(k));
+    const defaultKanto = ['東京都', '神奈川県', '埼玉県', '千葉県', '茨城県', '栃木県', '群馬県', '山梨県', '静岡県'];
+    defaultKanto.forEach(name => kanto.push({ name, count: 0 }));
   }
 
   const totalChibaCount = cities.reduce((sum, c) => sum + (c.count || 0), 0);
