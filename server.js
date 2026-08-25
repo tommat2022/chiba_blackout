@@ -257,13 +257,13 @@ async function fetchTepcoOutageData() {
 }
 
 // チェック＆アラート発火メインロジック
-async function checkPowerOutages(isManualTrigger = false) {
+async function checkPowerOutages(isManualTrigger = false, isTargetChanged = false) {
   if (!store.isMonitoringActive && !isManualTrigger) {
     addLog('自動監視が停止中のため、チェックをスキップしました。', 'warning');
     return;
   }
 
-  addLog(`東京電力 停電情報データをチェック中... (${isManualTrigger ? '手動実行' : '定期チェック'})`, 'info');
+  addLog(`東京電力 停電情報データをチェック中... (${isManualTrigger ? '手動・設定変更実行' : '定期チェック'})`, 'info');
   
   const result = await fetchTepcoOutageData();
   const nowStr = new Date().toISOString();
@@ -298,50 +298,74 @@ async function checkPowerOutages(isManualTrigger = false) {
 
     const target = store.alertTarget || 'funabashi';
 
-    addLog(`チェック完了: 千葉県全域 ${currentChibaCount}軒 / 関東全域 ${currentKantoCount}軒 / 船橋市 ${currentFunabashiCount}軒 (対象設定: ${target})`, 'info');
+    addLog(`チェック完了: 千葉県全域 ${currentChibaCount.toLocaleString()}軒 / 関東全域 ${currentKantoCount.toLocaleString()}軒 / 船橋市 ${currentFunabashiCount.toLocaleString()}軒 (対象設定: ${target})`, 'info');
 
     let isTriggered = false;
     let subject = '';
     let message = '';
 
-    if (target === 'funabashi' && currentFunabashiCount !== prevFunabashi) {
-      isTriggered = true;
-      subject = `【緊急警報】船橋市 停電情報更新 (${currentFunabashiCount}軒)`;
-      message = `船橋市内で停電情報が更新されました。\n\n` +
-                `■ 船橋市 停電件数: ${currentFunabashiCount} 軒 (前回: ${prevFunabashi} 軒)\n` +
-                `■ 該当地域: ${store.funabashi.areas.length > 0 ? store.funabashi.areas.join(', ') : '確認中'}\n` +
-                `■ 判定時刻: ${new Date().toLocaleString('ja-JP')}\n\n` +
-                `https://teideninfo.tepco.co.jp/html/12204000000.html`;
-      if (currentFunabashiCount === 0 && prevFunabashi > 0) {
-        subject = `【復旧通知】船橋市 停電復旧のお知らせ`;
-        message = `船橋市内の停電が復旧しました。\n■ 現在の停電件数: 0 軒\n■ 復旧確認時刻: ${new Date().toLocaleString('ja-JP')}`;
+    // 停電発生エリア一覧の作成
+    const outageKantoAreas = (result.kanto || [])
+      .filter(k => k.count > 0)
+      .map(k => `・${k.name}: ${k.count.toLocaleString()}軒`)
+      .join('\n') || '・特になし';
+
+    const outageChibaCities = (result.cities || [])
+      .filter(c => c.count > 0)
+      .map(c => `・${c.name}: ${c.count.toLocaleString()}軒`)
+      .join('\n') || '・特になし';
+
+    if (target === 'funabashi') {
+      if (currentFunabashiCount !== prevFunabashi || (isTargetChanged && currentFunabashiCount > 0)) {
+        if (currentFunabashiCount > 0) {
+          isTriggered = true;
+          subject = `【緊急警報】船橋市 停電情報更新 (${currentFunabashiCount.toLocaleString()}軒)`;
+          message = `船橋市内で停電情報が更新されました。\n\n` +
+                    `■ 船橋市 停電件数: ${currentFunabashiCount.toLocaleString()} 軒 (前回: ${prevFunabashi.toLocaleString()} 軒)\n` +
+                    `■ 該当地域: ${store.funabashi.areas.length > 0 ? store.funabashi.areas.join(', ') : '詳細確認中'}\n` +
+                    `■ 判定時刻: ${new Date().toLocaleString('ja-JP')}\n\n` +
+                    `https://teideninfo.tepco.co.jp/html/12204000000.html`;
+        } else if (prevFunabashi > 0) {
+          isTriggered = true;
+          subject = `【復旧通知】船橋市 停電復旧のお知らせ`;
+          message = `船橋市内の停電が復旧しました。\n■ 現在の停電件数: 0 軒\n■ 復旧確認時刻: ${new Date().toLocaleString('ja-JP')}`;
+        }
       }
 
-    } else if (target === 'chiba' && currentChibaCount !== prevChiba) {
-      isTriggered = true;
-      subject = `【緊急警報】千葉県全域 停電情報更新 (${currentChibaCount}軒)`;
-      message = `千葉県内で停電情報が更新されました。\n\n` +
-                `■ 千葉県全域 停電件数: ${currentChibaCount} 軒 (前回: ${prevChiba} 軒)\n` +
-                `■ 船橋市 停電件数: ${currentFunabashiCount} 軒\n` +
-                `■ 判定時刻: ${new Date().toLocaleString('ja-JP')}\n\n` +
-                `https://teideninfo.tepco.co.jp/html/12000000000.html`;
-      if (currentChibaCount === 0 && prevChiba > 0) {
-        subject = `【復旧通知】千葉県全域 停電復旧のお知らせ`;
-        message = `千葉県全域の停電が復旧しました。\n■ 現在の停電件数: 0 軒\n■ 復旧確認時刻: ${new Date().toLocaleString('ja-JP')}`;
+    } else if (target === 'chiba') {
+      if (currentChibaCount !== prevChiba || (isTargetChanged && currentChibaCount > 0)) {
+        if (currentChibaCount > 0) {
+          isTriggered = true;
+          subject = `【緊急警報】千葉県全域 停電情報更新 (${currentChibaCount.toLocaleString()}軒)`;
+          message = `千葉県内で停電情報が更新されました。\n\n` +
+                    `■ 千葉県全域 停電件数: ${currentChibaCount.toLocaleString()} 軒 (前回: ${prevChiba.toLocaleString()} 軒)\n` +
+                    `■ 停電発生市町村:\n${outageChibaCities}\n\n` +
+                    `■ 判定時刻: ${new Date().toLocaleString('ja-JP')}\n\n` +
+                    `https://teideninfo.tepco.co.jp/html/12000000000.html`;
+        } else if (prevChiba > 0) {
+          isTriggered = true;
+          subject = `【復旧通知】千葉県全域 停電復旧のお知らせ`;
+          message = `千葉県全域の停電が復旧しました。\n■ 現在の停電件数: 0 軒\n■ 復旧確認時刻: ${new Date().toLocaleString('ja-JP')}`;
+        }
       }
 
-    } else if (target === 'kanto' && currentKantoCount !== prevKanto) {
-      isTriggered = true;
-      subject = `【緊急警報】関東全域 停電情報更新 (${currentKantoCount}軒)`;
-      message = `関東エリアで停電情報が更新されました。\n\n` +
-                `■ 関東全域 停電件数: ${currentKantoCount} 軒 (前回: ${prevKanto} 軒)\n` +
-                `■ 千葉県全域 停電件数: ${currentChibaCount} 軒\n` +
-                `■ 船橋市 停電件数: ${currentFunabashiCount} 軒\n` +
-                `■ 判定時刻: ${new Date().toLocaleString('ja-JP')}\n\n` +
-                `https://teideninfo.tepco.co.jp/html/00000000000.html`;
-      if (currentKantoCount === 0 && prevKanto > 0) {
-        subject = `【復旧通知】関東全域 停電復旧のお知らせ`;
-        message = `関東全域の停電が復旧しました。\n■ 現在の停電件数: 0 軒\n■ 復旧確認時刻: ${new Date().toLocaleString('ja-JP')}`;
+    } else if (target === 'kanto') {
+      if (currentKantoCount !== prevKanto || (isTargetChanged && currentKantoCount > 0)) {
+        if (currentKantoCount > 0) {
+          isTriggered = true;
+          subject = `【緊急警報】関東全域 停電情報更新 (${currentKantoCount.toLocaleString()}軒)`;
+          message = `関東エリアで停電情報が更新されました。\n\n` +
+                    `■ 関東全域 停電件数: ${currentKantoCount.toLocaleString()} 軒 (前回: ${prevKanto.toLocaleString()} 軒)\n` +
+                    `■ 停電発生都県:\n${outageKantoAreas}\n\n` +
+                    `■ 千葉県全域 停電件数: ${currentChibaCount.toLocaleString()} 軒\n` +
+                    `■ 船橋市 停電件数: ${currentFunabashiCount.toLocaleString()} 軒\n` +
+                    `■ 判定時刻: ${new Date().toLocaleString('ja-JP')}\n\n` +
+                    `https://teideninfo.tepco.co.jp/html/00000000000.html`;
+        } else if (prevKanto > 0) {
+          isTriggered = true;
+          subject = `【復旧通知】関東全域 停電復旧のお知らせ`;
+          message = `関東全域の停電が復旧しました。\n■ 現在の停電件数: 0 軒\n■ 復旧確認時刻: ${new Date().toLocaleString('ja-JP')}`;
+        }
       }
     }
 
@@ -492,12 +516,17 @@ const server = http.createServer((req, res) => {
       if ([5, 30, 60].includes(Number(intervalMinutes))) {
         store.intervalMinutes = Number(intervalMinutes);
       }
+      const targetChanged = alertTarget && store.alertTarget !== alertTarget;
       if (['funabashi', 'chiba', 'kanto'].includes(alertTarget)) {
         store.alertTarget = alertTarget;
       }
       saveStore();
       restartMonitoringScheduler();
       addLog(`監視設定を変更しました (稼働: ${store.isMonitoringActive ? 'ON' : 'OFF'}, 間隔: ${store.intervalMinutes}分, 対象: ${store.alertTarget})`, 'info');
+
+      // 設定更新・保存時に即座にデータチェックとアラート判定を実行
+      checkPowerOutages(true, targetChanged);
+
       return sendJson(200, {
         success: true,
         isMonitoringActive: store.isMonitoringActive,
