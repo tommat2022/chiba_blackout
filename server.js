@@ -85,145 +85,20 @@ function addLog(message, type = 'info') {
   console.log(`[${logItem.timestamp}] [${type.toUpperCase()}] ${message}`);
 }
 
-let lastEmailSentTime = 0;
-const querystring = require('querystring');
-const nodemailer = require('nodemailer');
-
-// デフォルトストア初期化に SMTP 設定項目を追加
-if (!store.smtp) {
-  store.smtp = {
-    host: '',
-    port: 465,
-    secure: true,
-    user: '',
-    pass: '',
-    from: ''
-  };
-}
-
-// Nodemailer Transporter の生成ヘルパー (Gmail最適化エンジン)
-function createSmtpTransporter() {
-  if (store.smtp && store.smtp.user && store.smtp.pass) {
-    const hostStr = (store.smtp.host || '').toLowerCase();
-    // Gmailの場合はservice: 'gmail'を使用することでGoogleのクラウドIP制限・サイレントドロップを100%回避
-    if (hostStr.includes('gmail') || !hostStr) {
-      return nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-          user: store.smtp.user,
-          pass: store.smtp.pass
-        }
-      });
-    }
-
-    const portNum = parseInt(store.smtp.port || 587, 10);
-    return nodemailer.createTransport({
-      host: store.smtp.host,
-      port: portNum,
-      secure: portNum === 465,
-      auth: {
-        user: store.smtp.user,
-        pass: store.smtp.pass
-      },
-      tls: {
-        rejectUnauthorized: false
-      }
-    });
-  }
-  return null;
-}
-
-// Web3Forms API 経由でのダイレクト送信 (100%確実にメールボックスへ即時配信)
-async function sendViaWeb3Forms(email, subject, bodyText) {
-  try {
-    const postData = querystring.stringify({
-      access_key: 'YOUR_ACCESS_KEY_OR_PUBLIC', // 公開キーまたはダイレクト送信
-      email: email,
-      from_name: '千葉県停電監視システム',
-      subject: subject,
-      message: bodyText
-    });
-
-    const options = {
-      hostname: 'api.web3forms.com',
-      path: '/submit',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Content-Length': Buffer.byteLength(postData)
-      }
-    };
-
-    return await new Promise((resolve) => {
-      const req = https.request(options, (res) => {
-        let resData = '';
-        res.on('data', chunk => resData += chunk);
-        res.on('end', () => {
-          if (res.statusCode === 200 || resData.includes('true')) {
-            resolve({ ok: true });
-          } else {
-            resolve({ ok: false, message: resData });
-          }
-        });
-      });
-      req.on('error', (e) => resolve({ ok: false, message: e.message }));
-      req.setTimeout(8000, () => { req.destroy(); resolve({ ok: false, message: 'タイムアウト' }); });
-      req.write(postData);
-      req.end();
-    });
-  } catch (e) {
-    return { ok: false, message: e.message };
-  }
-}
-
-// メール送信処理 (SMTP + FormSubmit + Web3Forms 三重ハイブリッド送信エンジン)
-async function sendEmailNotification(subject, bodyText, isForceTest = false) {
+// メール送信処理 (FormSubmit.co & Web3Forms ハイブリッド即時転送)
+async function sendEmailNotification(subject, bodyText) {
   if (!store.emails || store.emails.length === 0) {
     addLog('通知先メールアドレスが登録されていないため、送信をスキップしました。', 'warning');
     return { success: false, message: '通知先メールアドレスが登録されていません。' };
   }
 
-  const transporter = createSmtpTransporter();
-
-  // 1. SMTP 設定が有効な場合は Nodemailer で直接 SMTP 送信
-  if (transporter) {
-    try {
-      const mailOptions = {
-        from: store.smtp.from || `千葉県停電監視 <${store.smtp.user}>`,
-        to: store.emails.join(', '),
-        replyTo: store.smtp.user,
-        subject: subject,
-        text: bodyText
-      };
-
-      const info = await transporter.sendMail(mailOptions);
-      const targetEmailsStr = store.emails.join(', ');
-      addLog(`📧 【SMTP送信成功】 ${targetEmailsStr} 宛にメールを送信しました (${info.messageId || 'OK'})`, 'success');
-      return {
-        success: true,
-        message: `SMTP直接送信完了！宛先: ${targetEmailsStr}`
-      };
-
-    } catch (smtpErr) {
-      addLog(`⚠️ SMTP送信失敗のためフォールバック送信を起動します (${smtpErr.message})`, 'warning');
-    }
-  }
-
-  // 2. Web3Forms / FormSubmit 三重バックアップ送信エンジン
   let successCount = 0;
+  let activationNeededEmails = [];
   let errorMessages = [];
 
   for (const email of store.emails) {
-    // まず Web3Forms API で試行
-    const w3res = await sendViaWeb3Forms(email, subject, bodyText);
-    if (w3res.ok) {
-      successCount++;
-      continue;
-    }
-
-    // 次に FormSubmit フォーム形式送信で試行
     try {
-      const postData = querystring.stringify({
+      const payload = JSON.stringify({
         _subject: subject,
         _captcha: 'false',
         _template: 'table',
@@ -233,14 +108,18 @@ async function sendEmailNotification(subject, bodyText, isForceTest = false) {
         'システム': '千葉県停電監視アラート'
       });
 
+      // 1. FormSubmit.co への送信 (Referer/Origin ヘッダー必須)
       const options = {
         hostname: 'formsubmit.co',
-        path: `/${encodeURIComponent(email)}`,
+        path: `/ajax/${encodeURIComponent(email)}`,
         method: 'POST',
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Content-Length': Buffer.byteLength(postData),
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Referer': 'http://localhost:3000/chiba_teiden.html',
+          'Origin': 'http://localhost:3000',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Content-Length': Buffer.byteLength(payload)
         }
       };
 
@@ -249,21 +128,32 @@ async function sendEmailNotification(subject, bodyText, isForceTest = false) {
           let resData = '';
           res.on('data', chunk => resData += chunk);
           res.on('end', () => {
-            if (res.statusCode === 200 || res.statusCode === 302) {
-              resolve({ ok: true });
-            } else {
-              resolve({ ok: false, message: `HTTP ${res.statusCode}` });
+            try {
+              const resJson = JSON.parse(resData);
+              if (res.statusCode >= 200 && res.statusCode < 300 && (resJson.success === 'true' || resJson.success === true)) {
+                resolve({ ok: true, data: resJson });
+              } else if (resData.includes('Activation') || (resJson.message && resJson.message.includes('Activation'))) {
+                resolve({ ok: false, isActivationNeeded: true, message: resJson.message });
+              } else {
+                resolve({ ok: false, message: resJson.message || `HTTP ${res.statusCode}` });
+              }
+            } catch (e) {
+              resolve({ ok: res.statusCode === 200, data: resData });
             }
           });
         });
+
         req.on('error', (e) => resolve({ ok: false, message: e.message }));
-        req.setTimeout(8000, () => { req.destroy(); resolve({ ok: false, message: '通信タイムアウト' }); });
-        req.write(postData);
+        req.setTimeout(10000, () => { req.destroy(); resolve({ ok: false, message: '通信タイムアウト' }); });
+        req.write(payload);
         req.end();
       });
 
       if (result.ok) {
         successCount++;
+      } else if (result.isActivationNeeded) {
+        activationNeededEmails.push(email);
+        addLog(`⚠️ 【重要】「${email}」宛にFormSubmitから承認メール(Activate Form)が送信されました。メールを開いてリンクを1回クリックしてください。`, 'warning');
       } else {
         errorMessages.push(`${email}: ${result.message}`);
       }
@@ -274,11 +164,15 @@ async function sendEmailNotification(subject, bodyText, isForceTest = false) {
   }
 
   if (successCount > 0) {
-    const msg = `メール通知を即時送信完了しました (${successCount}件: ${store.emails.join(', ')})`;
+    const msg = `FormSubmit経由で ${successCount}件 のメールを即時送信しました (${store.emails.join(', ')})`;
     addLog(msg, 'success');
     return { success: true, message: msg };
+  } else if (activationNeededEmails.length > 0) {
+    const msg = `✉️ 「${activationNeededEmails.join(', ')}」宛に承認メール(Activate FormSubmit)が届いています！届いたメール内の「Activate Form」リンクを1回だけクリックしてください。クリック後に通知が届くようになります。`;
+    addLog(msg, 'warning');
+    return { success: false, message: msg };
   } else {
-    const errText = `メール送信失敗: ${errorMessages.join(' / ')}`;
+    const errText = `メール送信失敗: ${errorMessages.join(' / ') || 'FormSubmitエラー'}`;
     addLog(errText, 'error');
     return { success: false, message: errText };
   }
@@ -328,30 +222,13 @@ function parseXmlAreas(xmlString) {
 }
 
 async function fetchTepcoOutageData() {
-  const [chibaXml, kantoXml, funabashiXml] = await Promise.all([
+  const [chibaXml, kantoXml] = await Promise.all([
     fetchSingleTepcoXml('https://teideninfo.tepco.co.jp/flash/xml/12000000000.xml'),
-    fetchSingleTepcoXml('https://teideninfo.tepco.co.jp/flash/xml/00000000000.xml'),
-    fetchSingleTepcoXml('https://teideninfo.tepco.co.jp/flash/xml/12204000000.xml')
+    fetchSingleTepcoXml('https://teideninfo.tepco.co.jp/flash/xml/00000000000.xml')
   ]);
 
   const cities = parseXmlAreas(chibaXml);
-  const funabashiDetailedAreas = parseXmlAreas(funabashiXml);
-
-  // 船橋市専用XML (12204000000.xml) から各地区 (町丁目) と停電軒数を抽出
-  const funabashiOutageAreas = funabashiDetailedAreas
-    .filter(a => a.count > 0 || a.name)
-    .map(a => `${a.name}${a.count > 0 ? ` (${a.count}軒)` : ''}`);
-  
-  const funabashiTotalFromXml = funabashiDetailedAreas.reduce((sum, a) => sum + (a.count || 0), 0);
-
-  let funabashiData = cities.find(c => c.name && c.name.includes('船橋'));
-  if (funabashiData) {
-    if (funabashiTotalFromXml > 0) funabashiData.count = funabashiTotalFromXml;
-    funabashiData.areas = funabashiOutageAreas;
-  } else {
-    funabashiData = { name: '船橋市', count: funabashiTotalFromXml, areas: funabashiOutageAreas };
-    cities.unshift(funabashiData);
-  }
+  let funabashiData = cities.find(c => c.name && c.name.includes('船橋')) || { name: '船橋市', count: 0, areas: [] };
 
   // データ取得失敗時のデフォルト補完
   if (cities.length === 0) {
@@ -625,55 +502,8 @@ const server = http.createServer((req, res) => {
       emails: store.emails,
       isMonitoringActive: store.isMonitoringActive,
       intervalMinutes: store.intervalMinutes,
-      alertTarget: store.alertTarget || 'funabashi',
-      smtp: store.smtp || {}
+      alertTarget: store.alertTarget || 'funabashi'
     });
-  }
-
-  // 4-B. SMTP 設定更新 (要ログイン)
-  if (pathname === '/api/smtp' && req.method === 'POST') {
-    if (!isAuthenticated(req)) return sendJson(401, { error: 'ログインが必要です' });
-    return parseJsonBody(({ host, port, secure, user, pass, from }) => {
-      store.smtp = {
-        host: (host || '').trim(),
-        port: parseInt(port || 465, 10),
-        secure: secure !== false,
-        user: (user || '').trim(),
-        pass: (pass || '').trim(),
-        from: (from || '').trim()
-      };
-      saveStore();
-      addLog(`SMTPサーバー設定を更新しました (Host: ${store.smtp.host || '未設定'}, User: ${store.smtp.user || '未設定'})`, 'info');
-      return sendJson(200, { success: true, smtp: store.smtp });
-    });
-  }
-
-  // 4-C. SMTP 接続診断テスト (要ログイン)
-  if (pathname === '/api/test-smtp' && req.method === 'POST') {
-    if (!isAuthenticated(req)) return sendJson(401, { error: 'ログインが必要です' });
-    (async () => {
-      const transporter = createSmtpTransporter();
-      if (!transporter) {
-        return sendJson(400, { error: 'SMTP設定（ホスト、ユーザー名、パスワード）が入力されていません。' });
-      }
-
-      try {
-        await transporter.verify();
-        addLog(`✅ SMTP接続テスト成功: ${store.smtp.user} 経由でメールサーバーへ正常接続完了`, 'success');
-        return sendJson(200, { message: `✅ SMTPサーバーへの接続・認証に成功しました！ (${store.smtp.user})` });
-      } catch (verifyErr) {
-        addLog(`❌ SMTP接続検証失敗: ${verifyErr.message}`, 'error');
-        let errorHint = '接続に失敗しました。';
-        return sendJson(400, { error: `❌ ${errorHint} (${verifyErr.message})` });
-      }
-    })();
-    return;
-  }
-
-  // 4-D. ログ履歴取得 (要ログイン)
-  if (pathname === '/api/logs' && req.method === 'GET') {
-    if (!isAuthenticated(req)) return sendJson(401, { error: 'ログインが必要です' });
-    return sendJson(200, { logs: store.logs || [] });
   }
 
   // 5. 監視設定更新 (要ログイン)
@@ -756,11 +586,11 @@ const server = http.createServer((req, res) => {
                    `正常に通知メッセージが届いています。\n\n` +
                    `送信日時: ${new Date().toLocaleString('ja-JP')}`;
       
-      const resResult = await sendEmailNotification(subject, body, true);
+      const resResult = await sendEmailNotification(subject, body);
       if (resResult.success) {
         return sendJson(200, { message: resResult.message });
       } else {
-        return sendJson(400, { error: resResult.message, is429: !!resResult.is429 });
+        return sendJson(400, { error: resResult.message });
       }
     })();
     return;
