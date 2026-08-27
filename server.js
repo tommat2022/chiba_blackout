@@ -85,16 +85,27 @@ function addLog(message, type = 'info') {
   console.log(`[${logItem.timestamp}] [${type.toUpperCase()}] ${message}`);
 }
 
-// メール送信処理 (FormSubmit.co & Web3Forms ハイブリッド即時転送)
-async function sendEmailNotification(subject, bodyText) {
+let lastEmailSentTime = 0;
+
+// メール送信処理 (FormSubmit.co 即時転送)
+async function sendEmailNotification(subject, bodyText, isForceTest = false) {
   if (!store.emails || store.emails.length === 0) {
     addLog('通知先メールアドレスが登録されていないため、送信をスキップしました。', 'warning');
     return { success: false, message: '通知先メールアドレスが登録されていません。' };
   }
 
+  // 短時間連投ガード (自動チェック時は前回の送信から60秒未満ならRate limit回避のためスキップ)
+  const now = Date.now();
+  if (!isForceTest && (now - lastEmailSentTime < 60000)) {
+    const skipMsg = '前回のメール送信から1分以内のため、FormSubmitの送信制限(Rate limit)回避により自動送信をスキップしました。';
+    addLog(skipMsg, 'warning');
+    return { success: false, message: skipMsg };
+  }
+
   let successCount = 0;
   let activationNeededEmails = [];
   let errorMessages = [];
+  let isRateLimited = false;
 
   for (const email of store.emails) {
     try {
@@ -108,7 +119,7 @@ async function sendEmailNotification(subject, bodyText) {
         'システム': '千葉県停電監視アラート'
       });
 
-      // 1. FormSubmit.co への送信 (Referer/Origin ヘッダー必須)
+      // FormSubmit.co への送信 (Referer/Origin ヘッダー必須)
       const options = {
         hostname: 'formsubmit.co',
         path: `/ajax/${encodeURIComponent(email)}`,
@@ -134,11 +145,17 @@ async function sendEmailNotification(subject, bodyText) {
                 resolve({ ok: true, data: resJson });
               } else if (resData.includes('Activation') || (resJson.message && resJson.message.includes('Activation'))) {
                 resolve({ ok: false, isActivationNeeded: true, message: resJson.message });
+              } else if (resData.includes('Rate limit') || (resJson.message && resJson.message.includes('Rate limit'))) {
+                resolve({ ok: false, isRateLimit: true, message: 'FormSubmitの短時間送信制限(Rate limit exceeded)' });
               } else {
                 resolve({ ok: false, message: resJson.message || `HTTP ${res.statusCode}` });
               }
             } catch (e) {
-              resolve({ ok: res.statusCode === 200, data: resData });
+              if (resData.includes('Rate limit')) {
+                resolve({ ok: false, isRateLimit: true, message: 'FormSubmitの短時間送信制限(Rate limit exceeded)' });
+              } else {
+                resolve({ ok: res.statusCode === 200, data: resData });
+              }
             }
           });
         });
@@ -151,9 +168,13 @@ async function sendEmailNotification(subject, bodyText) {
 
       if (result.ok) {
         successCount++;
+        lastEmailSentTime = Date.now();
       } else if (result.isActivationNeeded) {
         activationNeededEmails.push(email);
         addLog(`⚠️ 【重要】「${email}」宛にFormSubmitから承認メール(Activate Form)が送信されました。メールを開いてリンクを1回クリックしてください。`, 'warning');
+      } else if (result.isRateLimit) {
+        isRateLimited = true;
+        errorMessages.push(`${email}: FormSubmitの短時間送信制限(Rate limit exceeded)`);
       } else {
         errorMessages.push(`${email}: ${result.message}`);
       }
@@ -169,6 +190,10 @@ async function sendEmailNotification(subject, bodyText) {
     return { success: true, message: msg };
   } else if (activationNeededEmails.length > 0) {
     const msg = `✉️ 「${activationNeededEmails.join(', ')}」宛に承認メール(Activate FormSubmit)が届いています！届いたメール内の「Activate Form」リンクを1回だけクリックしてください。クリック後に通知が届くようになります。`;
+    addLog(msg, 'warning');
+    return { success: false, message: msg };
+  } else if (isRateLimited) {
+    const msg = `⏳ FormSubmitの短時間送信制限(Rate limit exceeded)にかかりました。2〜3分ほど時間を置くと自動解除され送信できるようになります。`;
     addLog(msg, 'warning');
     return { success: false, message: msg };
   } else {
@@ -603,7 +628,7 @@ const server = http.createServer((req, res) => {
                    `正常に通知メッセージが届いています。\n\n` +
                    `送信日時: ${new Date().toLocaleString('ja-JP')}`;
       
-      const resResult = await sendEmailNotification(subject, body);
+      const resResult = await sendEmailNotification(subject, body, true);
       if (resResult.success) {
         return sendJson(200, { message: resResult.message });
       } else {
