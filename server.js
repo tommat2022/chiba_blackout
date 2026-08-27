@@ -647,7 +647,7 @@ const server = http.createServer((req, res) => {
       if (resResult.success) {
         return sendJson(200, { message: resResult.message });
       } else {
-        return sendJson(400, { error: resResult.message });
+        return sendJson(400, { error: resResult.message, is429: !!resResult.is429 });
       }
     })();
     return;
