@@ -222,13 +222,30 @@ function parseXmlAreas(xmlString) {
 }
 
 async function fetchTepcoOutageData() {
-  const [chibaXml, kantoXml] = await Promise.all([
+  const [chibaXml, kantoXml, funabashiXml] = await Promise.all([
     fetchSingleTepcoXml('https://teideninfo.tepco.co.jp/flash/xml/12000000000.xml'),
-    fetchSingleTepcoXml('https://teideninfo.tepco.co.jp/flash/xml/00000000000.xml')
+    fetchSingleTepcoXml('https://teideninfo.tepco.co.jp/flash/xml/00000000000.xml'),
+    fetchSingleTepcoXml('https://teideninfo.tepco.co.jp/flash/xml/12204000000.xml')
   ]);
 
   const cities = parseXmlAreas(chibaXml);
-  let funabashiData = cities.find(c => c.name && c.name.includes('船橋')) || { name: '船橋市', count: 0, areas: [] };
+  const funabashiDetailedAreas = parseXmlAreas(funabashiXml);
+
+  // 船橋市専用XML (12204000000.xml) から各地区 (町丁目) と停電軒数を抽出
+  const funabashiOutageAreas = funabashiDetailedAreas
+    .filter(a => a.count > 0 || a.name)
+    .map(a => `${a.name}${a.count > 0 ? ` (${a.count}軒)` : ''}`);
+  
+  const funabashiTotalFromXml = funabashiDetailedAreas.reduce((sum, a) => sum + (a.count || 0), 0);
+
+  let funabashiData = cities.find(c => c.name && c.name.includes('船橋'));
+  if (funabashiData) {
+    if (funabashiTotalFromXml > 0) funabashiData.count = funabashiTotalFromXml;
+    funabashiData.areas = funabashiOutageAreas;
+  } else {
+    funabashiData = { name: '船橋市', count: funabashiTotalFromXml, areas: funabashiOutageAreas };
+    cities.unshift(funabashiData);
+  }
 
   // データ取得失敗時のデフォルト補完
   if (cities.length === 0) {
