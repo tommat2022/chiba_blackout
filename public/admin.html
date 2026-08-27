@@ -96,6 +96,53 @@
           新しいメールアドレスを追加後、初めてテストメールまたはアラートが送信されると、FormSubmitから確認メール「<em>Activate FormSubmit</em>」が届きます。<br>
           メール内の **「Activate Form」** ボタンを1回クリックしてください。以降、すべての停電アラートが自動受信されます。
         </div>
+      <!-- 1-B. 確実な直接メール送信：SMTPサーバー設定 (Gmail等対応) -->
+      <div class="main-card" style="border-left: 4px solid var(--accent-blue);">
+        <div style="font-size: 1rem; font-weight: 700; margin-bottom: 0.4rem; color: var(--accent-blue); display: flex; align-items: center; justify-content: space-between;">
+          <span>📨 確実なメール即時届く：SMTP サーバー設定</span>
+          <button id="fill-gmail-btn" type="button" class="btn btn-secondary" style="font-size: 0.7rem; padding: 0.2rem 0.5rem; width: auto;">
+            ⚡ Gmail設定の全自動補完
+          </button>
+        </div>
+        <p style="font-size: 0.75rem; color: var(--text-sub); margin-bottom: 0.75rem;">
+          ※設定すると FormSubmit などの承認作業（Activate）や通信制限を受けず、直接相手のメールボックスへ100%即時届くようになります。
+        </p>
+
+        <div id="smtp-alert" class="alert-box success" style="display: none;"></div>
+
+        <form id="smtp-form" style="display: flex; flex-direction: column; gap: 0.6rem;">
+          <div style="display: flex; gap: 0.5rem;">
+            <div class="form-group" style="flex: 2; margin: 0;">
+              <label style="font-size: 0.75rem;">SMTP ホスト名</label>
+              <input type="text" id="smtp-host" placeholder="smtp.gmail.com">
+            </div>
+            <div class="form-group" style="flex: 1; margin: 0;">
+              <label style="font-size: 0.75rem;">ポート</label>
+              <input type="number" id="smtp-port" placeholder="465">
+            </div>
+          </div>
+
+          <div class="form-group" style="margin: 0;">
+            <label style="font-size: 0.75rem;">送信用メールアドレス (ID)</label>
+            <input type="email" id="smtp-user" placeholder="your-email@gmail.com">
+          </div>
+
+          <div class="form-group" style="margin: 0;">
+            <label style="font-size: 0.75rem;">アプリパスワード / SMTPパスワード</label>
+            <input type="password" id="smtp-pass" placeholder="Googleアプリパスワード(16桁)またはパスワード">
+          </div>
+
+          <button type="submit" class="btn btn-primary" style="margin-top: 0.2rem;">
+            💾 SMTP設定を保存して直接送信を有効化
+          </button>
+        </form>
+
+        <div style="margin-top: 0.6rem; font-size: 0.7rem; color: var(--text-sub);">
+          <strong>💡 Gmailをお使いの場合の簡単な手順:</strong><br>
+          1. 「⚡ Gmail設定の全自動補完」を押します。<br>
+          2. ご自身のGmailアドレスを入力します。<br>
+          3. Googleアカウント設定の「2段階認証」→「アプリパスワード」で発行した16桁コードを貼り付けて保存するだけで完了です！
+        </div>
       </div>
 
       <!-- 2. バックグラウンド監視設定 -->
@@ -209,10 +256,49 @@
         document.getElementById('alert-target-select').value = data.alertTarget || 'funabashi';
         renderEmailList(data.emails || []);
 
+        if (data.smtp) {
+          document.getElementById('smtp-host').value = data.smtp.host || '';
+          document.getElementById('smtp-port').value = data.smtp.port || 465;
+          document.getElementById('smtp-user').value = data.smtp.user || '';
+          document.getElementById('smtp-pass').value = data.smtp.pass || '';
+        }
+
       } catch (err) {
         console.error('Failed to load settings:', err);
       }
     }
+
+    document.getElementById('fill-gmail-btn').addEventListener('click', () => {
+      document.getElementById('smtp-host').value = 'smtp.gmail.com';
+      document.getElementById('smtp-port').value = '465';
+      const currentUser = document.getElementById('smtp-user').value || (currentEmails[0] || '');
+      document.getElementById('smtp-user').value = currentUser;
+      showAlert('smtp-alert', '⚡ Gmail用のホスト(smtp.gmail.com)とポート(465)を自動補完しました！パスワードを入力して保存してください。');
+    });
+
+    document.getElementById('smtp-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const host = document.getElementById('smtp-host').value.trim();
+      const port = parseInt(document.getElementById('smtp-port').value, 10) || 465;
+      const user = document.getElementById('smtp-user').value.trim();
+      const pass = document.getElementById('smtp-pass').value.trim();
+
+      try {
+        const res = await fetch('/api/smtp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ host, port, secure: true, user, pass })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          showAlert('smtp-alert', '✅ SMTP直接送信設定を保存しました！以降のメールは直接届きます。');
+        } else {
+          showAlert('smtp-alert', data.error || '保存エラー', true);
+        }
+      } catch (err) {
+        showAlert('smtp-alert', '通信エラー', true);
+      }
+    });
 
     function updateToggleLabel(isActive) {
       const label = document.getElementById('monitoring-toggle-label');
