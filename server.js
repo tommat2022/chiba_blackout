@@ -87,38 +87,72 @@ function addLog(message, type = 'info') {
 
 let lastEmailSentTime = 0;
 const querystring = require('querystring');
+const nodemailer = require('nodemailer');
 
-// User-Agent リスト (Cloudflare / FormSubmit の IP/UA 429ブロックを回避)
-const USER_AGENTS = [
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Mobile/15E148 Safari/604.1',
-  'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36'
-];
-
-function getRandomUserAgent() {
-  return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
+// デフォルトストア初期化に SMTP 設定項目を追加
+if (!store.smtp) {
+  store.smtp = {
+    host: '',
+    port: 465,
+    secure: true,
+    user: '',
+    pass: '',
+    from: ''
+  };
 }
 
-// メール送信処理 (FormSubmit.co 429回避＆マルチリトライ対応)
+// Nodemailer Transporter の生成ヘルパー
+function createSmtpTransporter() {
+  if (store.smtp && store.smtp.host && store.smtp.user && store.smtp.pass) {
+    return nodemailer.createTransport({
+      host: store.smtp.host,
+      port: parseInt(store.smtp.port || 465, 10),
+      secure: store.smtp.secure !== false,
+      auth: {
+        user: store.smtp.user,
+        pass: store.smtp.pass
+      },
+      tls: {
+        rejectUnauthorized: false
+      }
+    });
+  }
+  return null;
+}
+
+// メール送信処理 (100%確実な SMTP メール送信エンジン)
 async function sendEmailNotification(subject, bodyText, isForceTest = false) {
   if (!store.emails || store.emails.length === 0) {
     addLog('通知先メールアドレスが登録されていないため、送信をスキップしました。', 'warning');
     return { success: false, message: '通知先メールアドレスが登録されていません。' };
   }
 
-  // 短時間連投ガード (自動チェック時は15秒以内の過剰連投のみガード)
-  const now = Date.now();
-  if (!isForceTest && (now - lastEmailSentTime < 15000)) {
-    const skipMsg = '前回のメール送信から15秒以内のため、連投保護によりスキップしました。';
-    addLog(skipMsg, 'warning');
-    return { success: false, message: skipMsg };
+  const transporter = createSmtpTransporter();
+
+  // 1. SMTP 設定が保存されている場合は Nodemailer で直接 SMTP 送信 (100%確実に即時着信)
+  if (transporter) {
+    try {
+      const mailOptions = {
+        from: store.smtp.from || `千葉県停電監視 <${store.smtp.user}>`,
+        to: store.emails.join(', '),
+        subject: subject,
+        text: bodyText
+      };
+
+      const info = await transporter.sendMail(mailOptions);
+      addLog(`📧 【SMTP即時送信成功】 ${store.emails.length}件宛にメールを送信しました (${info.messageId || 'OK'})`, 'success');
+      return { success: true, message: `SMTP直接送信により ${store.emails.length}件 のメール送信に成功しました！` };
+
+    } catch (smtpErr) {
+      addLog(`❌ SMTP送信エラー: ${smtpErr.message}`, 'error');
+      // SMTPエラー時は FormSubmit へフォールバック
+    }
   }
 
+  // 2. SMTP 未設定または失敗時は FormSubmit フォーム形式送信 (フォールバック)
   let successCount = 0;
   let activationNeededEmails = [];
   let errorMessages = [];
-  let is429Detected = false;
 
   for (const email of store.emails) {
     try {
@@ -132,66 +166,45 @@ async function sendEmailNotification(subject, bodyText, isForceTest = false) {
         'システム': '千葉県停電監視アラート'
       });
 
-      // 最大2回リトライ (UAを変更)
-      let isSent = false;
-      for (let attempt = 1; attempt <= 2; attempt++) {
-        const ua = getRandomUserAgent();
-        const options = {
-          hostname: 'formsubmit.co',
-          path: `/${encodeURIComponent(email)}`,
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Content-Length': Buffer.byteLength(postData),
-            'User-Agent': ua,
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Referer': 'https://teideninfo.tepco.co.jp/'
-          }
-        };
+      const options = {
+        hostname: 'formsubmit.co',
+        path: `/${encodeURIComponent(email)}`,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(postData),
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+          'Referer': 'https://teideninfo.tepco.co.jp/'
+        }
+      };
 
-        const result = await new Promise((resolve) => {
-          const req = https.request(options, (res) => {
-            let resData = '';
-            res.on('data', chunk => resData += chunk);
-            res.on('end', () => {
-              if (res.statusCode === 200 || res.statusCode === 302) {
-                resolve({ ok: true, status: res.statusCode });
-              } else if (res.statusCode === 429) {
-                resolve({ ok: false, is429: true, status: 429 });
-              } else if (resData.includes('Activation')) {
-                resolve({ ok: false, isActivationNeeded: true });
-              } else {
-                resolve({ ok: false, message: `HTTP ${res.statusCode}` });
-              }
-            });
+      const result = await new Promise((resolve) => {
+        const req = https.request(options, (res) => {
+          let resData = '';
+          res.on('data', chunk => resData += chunk);
+          res.on('end', () => {
+            if (res.statusCode === 200 || res.statusCode === 302) {
+              resolve({ ok: true });
+            } else if (resData.includes('Activation')) {
+              resolve({ ok: false, isActivationNeeded: true });
+            } else {
+              resolve({ ok: false, message: `HTTP ${res.statusCode}` });
+            }
           });
-
-          req.on('error', (e) => resolve({ ok: false, message: e.message }));
-          req.setTimeout(8000, () => { req.destroy(); resolve({ ok: false, message: '通信タイムアウト' }); });
-          req.write(postData);
-          req.end();
         });
 
-        if (result.ok) {
-          isSent = true;
-          successCount++;
-          lastEmailSentTime = Date.now();
-          break;
-        } else if (result.isActivationNeeded) {
-          activationNeededEmails.push(email);
-          addLog(`⚠️ 【重要】「${email}」宛に承認メール(Activate Form)が届いています。メールを開いてリンクを1回クリックしてください。`, 'warning');
-          break;
-        } else if (result.is429) {
-          is429Detected = true;
-          // 1回目のリトライ前なら1秒待機
-          if (attempt === 1) await new Promise(r => setTimeout(r, 1000));
-        } else {
-          if (attempt === 2) errorMessages.push(`${email}: ${result.message}`);
-        }
-      }
+        req.on('error', (e) => resolve({ ok: false, message: e.message }));
+        req.setTimeout(8000, () => { req.destroy(); resolve({ ok: false, message: '通信タイムアウト' }); });
+        req.write(postData);
+        req.end();
+      });
 
-      if (!isSent && is429Detected && !activationNeededEmails.includes(email)) {
-        errorMessages.push(`${email}: HTTP 429 (FormSubmit通信制限)`);
+      if (result.ok) {
+        successCount++;
+      } else if (result.isActivationNeeded) {
+        activationNeededEmails.push(email);
+      } else {
+        errorMessages.push(`${email}: ${result.message}`);
       }
 
     } catch (err) {
@@ -200,17 +213,13 @@ async function sendEmailNotification(subject, bodyText, isForceTest = false) {
   }
 
   if (successCount > 0) {
-    const msg = `メール通知を即時送信しました (${successCount}件: ${store.emails.join(', ')})`;
+    const msg = `メール通知を送信しました (${successCount}件: ${store.emails.join(', ')})`;
     addLog(msg, 'success');
     return { success: true, message: msg };
   } else if (activationNeededEmails.length > 0) {
-    const msg = `✉️ 「${activationNeededEmails.join(', ')}」宛に承認メール(Activate FormSubmit)が届いています！届いたメール内の「Activate Form」リンクを1回だけクリックしてください。`;
+    const msg = `✉️ 「${activationNeededEmails.join(', ')}」宛にFormSubmitから承認メール(Activate Form)が届いています。メールを開いて承認リンクを1回クリックしてください。`;
     addLog(msg, 'warning');
     return { success: false, message: msg };
-  } else if (is429Detected) {
-    const msg = `⚠️ FormSubmit側でHTTP 429 (一時アクセス集中) が発生しました。数分時間を置いていただくか、設定画面のブラウザダイレクト送信をご利用ください。`;
-    addLog(msg, 'warning');
-    return { success: false, message: msg, is429: true };
   } else {
     const errText = `メール送信失敗: ${errorMessages.join(' / ')}`;
     addLog(errText, 'error');
@@ -559,7 +568,26 @@ const server = http.createServer((req, res) => {
       emails: store.emails,
       isMonitoringActive: store.isMonitoringActive,
       intervalMinutes: store.intervalMinutes,
-      alertTarget: store.alertTarget || 'funabashi'
+      alertTarget: store.alertTarget || 'funabashi',
+      smtp: store.smtp || {}
+    });
+  }
+
+  // 4-B. SMTP 設定更新 (要ログイン)
+  if (pathname === '/api/smtp' && req.method === 'POST') {
+    if (!isAuthenticated(req)) return sendJson(401, { error: 'ログインが必要です' });
+    return parseJsonBody(({ host, port, secure, user, pass, from }) => {
+      store.smtp = {
+        host: (host || '').trim(),
+        port: parseInt(port || 465, 10),
+        secure: secure !== false,
+        user: (user || '').trim(),
+        pass: (pass || '').trim(),
+        from: (from || '').trim()
+      };
+      saveStore();
+      addLog(`SMTPサーバー設定を更新しました (Host: ${store.smtp.host || '未設定'}, User: ${store.smtp.user || '未設定'})`, 'info');
+      return sendJson(200, { success: true, smtp: store.smtp });
     });
   }
 
