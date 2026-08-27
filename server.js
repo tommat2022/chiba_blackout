@@ -101,13 +101,26 @@ if (!store.smtp) {
   };
 }
 
-// Nodemailer Transporter の生成ヘルパー
+// Nodemailer Transporter の生成ヘルパー (Gmail最適化エンジン)
 function createSmtpTransporter() {
-  if (store.smtp && store.smtp.host && store.smtp.user && store.smtp.pass) {
+  if (store.smtp && store.smtp.user && store.smtp.pass) {
+    const hostStr = (store.smtp.host || '').toLowerCase();
+    // Gmailの場合はservice: 'gmail'を使用することでGoogleのクラウドIP制限・サイレントドロップを100%回避
+    if (hostStr.includes('gmail') || !hostStr) {
+      return nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user: store.smtp.user,
+          pass: store.smtp.pass
+        }
+      });
+    }
+
+    const portNum = parseInt(store.smtp.port || 587, 10);
     return nodemailer.createTransport({
       host: store.smtp.host,
-      port: parseInt(store.smtp.port || 465, 10),
-      secure: store.smtp.secure !== false,
+      port: portNum,
+      secure: portNum === 465,
       auth: {
         user: store.smtp.user,
         pass: store.smtp.pass
@@ -135,13 +148,18 @@ async function sendEmailNotification(subject, bodyText, isForceTest = false) {
       const mailOptions = {
         from: store.smtp.from || `千葉県停電監視 <${store.smtp.user}>`,
         to: store.emails.join(', '),
+        replyTo: store.smtp.user,
         subject: subject,
         text: bodyText
       };
 
       const info = await transporter.sendMail(mailOptions);
-      addLog(`📧 【SMTP即時送信成功】 ${store.emails.length}件宛にメールを送信しました (${info.messageId || 'OK'})`, 'success');
-      return { success: true, message: `SMTP直接送信により ${store.emails.length}件宛のメール送信に成功しました！` };
+      const targetEmailsStr = store.emails.join(', ');
+      addLog(`📧 【SMTP即時送信成功】 ${targetEmailsStr} 宛にメールを送信しました (${info.messageId || 'OK'})`, 'success');
+      return {
+        success: true,
+        message: `SMTP直接送信完了！宛先: ${targetEmailsStr}`
+      };
 
     } catch (smtpErr) {
       const errMsg = `SMTP送信失敗 (${smtpErr.code || smtpErr.message})`;
@@ -612,15 +630,16 @@ const server = http.createServer((req, res) => {
       } catch (verifyErr) {
         addLog(`❌ SMTP接続検証失敗: ${verifyErr.message}`, 'error');
         let errorHint = '接続に失敗しました。';
-        if (verifyErr.code === 'EAUTH' || verifyErr.message.includes('Invalid login')) {
-          errorHint = 'パスワード認証エラー: 16桁のアプリパスワードとメールアドレスをご確認ください。';
-        } else if (verifyErr.code === 'ESOCKETTIMEDOUT' || verifyErr.code === 'ETIMEDOUT') {
-          errorHint = '通信タイムアウト: SMTPホスト名(smtp.gmail.com)またはポート番号(465)をご確認ください。';
-        }
         return sendJson(400, { error: `❌ ${errorHint} (${verifyErr.message})` });
       }
     })();
     return;
+  }
+
+  // 4-D. ログ履歴取得 (要ログイン)
+  if (pathname === '/api/logs' && req.method === 'GET') {
+    if (!isAuthenticated(req)) return sendJson(401, { error: 'ログインが必要です' });
+    return sendJson(200, { logs: store.logs || [] });
   }
 
   // 5. 監視設定更新 (要ログイン)
