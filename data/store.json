@@ -4,11 +4,175 @@
   ],
   "isMonitoringActive": true,
   "intervalMinutes": 30,
-  "lastCheck": "2026-08-23T02:06:02.111Z",
+  "alertTarget": "funabashi",
+  "isNextCheckSimulated": false,
+  "lastCheck": "2026-08-25T13:24:58.945Z",
   "previousFunabashiCount": 0,
+  "previousChibaCount": 0,
+  "previousKantoCount": 440,
   "cities": [
     {
-      "name": "船橋市",
+      "name": "旭市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "我孫子市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "いすみ市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "市川市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "一宮町",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "市原市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "印西市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "浦安市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "大網白里市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "大多喜町",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "御宿町",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "柏市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "勝浦市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "香取市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "鎌ケ谷市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "鴨川市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "木更津市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "君津市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "鋸南町",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "九十九里町",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "神崎町",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "栄町",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "佐倉市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "山武市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "酒々井町",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "芝山町",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "白子町",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "白井市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "匝瑳市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "袖ケ浦市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "多古町",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "館山市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "千葉市稲毛区",
       "count": 0,
       "areas": []
     },
@@ -23,7 +187,82 @@
       "areas": []
     },
     {
-      "name": "市川市",
+      "name": "千葉市緑区",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "千葉市美浜区",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "千葉市若葉区",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "銚子市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "長生村",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "長南町",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "東金市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "東庄町",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "富里市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "長柄町",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "流山市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "習志野市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "成田市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "野田市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "富津市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "船橋市",
       "count": 0,
       "areas": []
     },
@@ -33,12 +272,37 @@
       "areas": []
     },
     {
-      "name": "柏市",
+      "name": "南房総市",
       "count": 0,
       "areas": []
     },
     {
-      "name": "木更津市",
+      "name": "睦沢町",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "茂原市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "八街市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "八千代市",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "横芝光町",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "四街道市",
       "count": 0,
       "areas": []
     }
@@ -48,7 +312,144 @@
     "count": 0,
     "areas": []
   },
+  "kanto": [
+    {
+      "name": "茨城県",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "栃木県",
+      "count": 440,
+      "areas": []
+    },
+    {
+      "name": "群馬県",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "埼玉県",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "千葉県",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "東京都",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "神奈川県",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "山梨県",
+      "count": 0,
+      "areas": []
+    },
+    {
+      "name": "静岡県",
+      "count": 0,
+      "areas": []
+    }
+  ],
   "logs": [
+    {
+      "timestamp": "2026-08-25T13:24:58.945Z",
+      "type": "info",
+      "message": "チェック完了: 千葉県全域 0軒 / 関東全域 440軒 / 船橋市 0軒 (対象設定: funabashi)"
+    },
+    {
+      "timestamp": "2026-08-25T13:24:58.814Z",
+      "type": "info",
+      "message": "東京電力 停電情報データをチェック中... (手動実行)"
+    },
+    {
+      "timestamp": "2026-08-25T13:24:58.813Z",
+      "type": "info",
+      "message": "バックグラウンド監視タイマーを開始しました (間隔: 30分)"
+    },
+    {
+      "timestamp": "2026-08-25T13:24:58.752Z",
+      "type": "info",
+      "message": "千葉県停電監視サーバーがポート 3000 で起動しました。"
+    },
+    {
+      "timestamp": "2026-08-23T04:44:01.100Z",
+      "type": "info",
+      "message": "チェック完了: 千葉県全域停電件数 0軒 / 船橋市停電件数 0軒"
+    },
+    {
+      "timestamp": "2026-08-23T04:44:00.487Z",
+      "type": "info",
+      "message": "東京電力 停電情報データをチェック中... (定期チェック)"
+    },
+    {
+      "timestamp": "2026-08-23T04:14:00.468Z",
+      "type": "info",
+      "message": "監視設定を変更しました (稼働: ON, 間隔: 30分)"
+    },
+    {
+      "timestamp": "2026-08-23T04:14:00.467Z",
+      "type": "info",
+      "message": "バックグラウンド監視タイマーを開始しました (間隔: 30分)"
+    },
+    {
+      "timestamp": "2026-08-23T04:13:55.750Z",
+      "type": "info",
+      "message": "管理者 (hokensho) がログインしました。"
+    },
+    {
+      "timestamp": "2026-08-23T04:13:37.096Z",
+      "type": "info",
+      "message": "管理者 (hokensho) がログインしました。"
+    },
+    {
+      "timestamp": "2026-08-23T04:06:02.168Z",
+      "type": "info",
+      "message": "チェック完了: 千葉県全域停電件数 0軒 / 船橋市停電件数 0軒"
+    },
+    {
+      "timestamp": "2026-08-23T04:06:02.023Z",
+      "type": "info",
+      "message": "東京電力 停電情報データをチェック中... (定期チェック)"
+    },
+    {
+      "timestamp": "2026-08-23T03:36:02.180Z",
+      "type": "info",
+      "message": "チェック完了: 千葉県全域停電件数 0軒 / 船橋市停電件数 0軒"
+    },
+    {
+      "timestamp": "2026-08-23T03:36:02.000Z",
+      "type": "info",
+      "message": "東京電力 停電情報データをチェック中... (定期チェック)"
+    },
+    {
+      "timestamp": "2026-08-23T03:06:03.428Z",
+      "type": "info",
+      "message": "チェック完了: 千葉県全域停電件数 0軒 / 船橋市停電件数 0軒"
+    },
+    {
+      "timestamp": "2026-08-23T03:06:02.051Z",
+      "type": "info",
+      "message": "東京電力 停電情報データをチェック中... (定期チェック)"
+    },
+    {
+      "timestamp": "2026-08-23T02:36:02.247Z",
+      "type": "info",
+      "message": "チェック完了: 千葉県全域停電件数 0軒 / 船橋市停電件数 0軒"
+    },
+    {
+      "timestamp": "2026-08-23T02:36:01.930Z",
+      "type": "info",
+      "message": "東京電力 停電情報データをチェック中... (定期チェック)"
+    },
     {
       "timestamp": "2026-08-23T02:06:47.204Z",
       "type": "info",
