@@ -141,11 +141,16 @@ async function sendEmailNotification(subject, bodyText, isForceTest = false) {
 
       const info = await transporter.sendMail(mailOptions);
       addLog(`📧 【SMTP即時送信成功】 ${store.emails.length}件宛にメールを送信しました (${info.messageId || 'OK'})`, 'success');
-      return { success: true, message: `SMTP直接送信により ${store.emails.length}件 のメール送信に成功しました！` };
+      return { success: true, message: `SMTP直接送信により ${store.emails.length}件宛のメール送信に成功しました！` };
 
     } catch (smtpErr) {
-      addLog(`❌ SMTP送信エラー: ${smtpErr.message}`, 'error');
-      // SMTPエラー時は FormSubmit へフォールバック
+      const errMsg = `SMTP送信失敗 (${smtpErr.code || smtpErr.message})`;
+      addLog(`❌ ${errMsg}: ${smtpErr.message}`, 'error');
+      let detailMsg = 'SMTPサーバー認証エラー: メールアドレスまたはアプリパスワードをご確認ください。';
+      if (smtpErr.message.includes('Invalid login') || smtpErr.code === 'EAUTH') {
+        detailMsg = '❌ SMTP認証失敗: 16桁の「アプリパスワード」と「送信用メールアドレス」が正しく入力されているかご確認ください。';
+      }
+      return { success: false, message: detailMsg, isSmtpError: true };
     }
   }
 
@@ -589,6 +594,33 @@ const server = http.createServer((req, res) => {
       addLog(`SMTPサーバー設定を更新しました (Host: ${store.smtp.host || '未設定'}, User: ${store.smtp.user || '未設定'})`, 'info');
       return sendJson(200, { success: true, smtp: store.smtp });
     });
+  }
+
+  // 4-C. SMTP 接続診断テスト (要ログイン)
+  if (pathname === '/api/test-smtp' && req.method === 'POST') {
+    if (!isAuthenticated(req)) return sendJson(401, { error: 'ログインが必要です' });
+    (async () => {
+      const transporter = createSmtpTransporter();
+      if (!transporter) {
+        return sendJson(400, { error: 'SMTP設定（ホスト、ユーザー名、パスワード）が入力されていません。' });
+      }
+
+      try {
+        await transporter.verify();
+        addLog(`✅ SMTP接続テスト成功: ${store.smtp.user} 経由でメールサーバーへ正常接続完了`, 'success');
+        return sendJson(200, { message: `✅ SMTPサーバーへの接続・認証に成功しました！ (${store.smtp.user})` });
+      } catch (verifyErr) {
+        addLog(`❌ SMTP接続検証失敗: ${verifyErr.message}`, 'error');
+        let errorHint = '接続に失敗しました。';
+        if (verifyErr.code === 'EAUTH' || verifyErr.message.includes('Invalid login')) {
+          errorHint = 'パスワード認証エラー: 16桁のアプリパスワードとメールアドレスをご確認ください。';
+        } else if (verifyErr.code === 'ESOCKETTIMEDOUT' || verifyErr.code === 'ETIMEDOUT') {
+          errorHint = '通信タイムアウト: SMTPホスト名(smtp.gmail.com)またはポート番号(465)をご確認ください。';
+        }
+        return sendJson(400, { error: `❌ ${errorHint} (${verifyErr.message})` });
+      }
+    })();
+    return;
   }
 
   // 5. 監視設定更新 (要ログイン)
