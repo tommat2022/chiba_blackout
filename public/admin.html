@@ -176,6 +176,7 @@
 
   <script>
     let editingEmail = null;
+    let currentEmails = [];
 
     function showAlert(elementId, msg, isError = false) {
       const el = document.getElementById(elementId);
@@ -220,9 +221,10 @@
     }
 
     function renderEmailList(emails) {
-      document.getElementById('email-count').innerText = emails.length;
+      currentEmails = emails || [];
+      document.getElementById('email-count').innerText = currentEmails.length;
       const container = document.getElementById('email-list');
-      if (emails.length === 0) {
+      if (currentEmails.length === 0) {
         container.innerHTML = '<div style="color: var(--text-sub); font-size: 0.8rem; padding: 0.4rem;">メールアドレスが登録されていません。</div>';
         return;
       }
@@ -399,7 +401,16 @@
           }
         }
       } catch (err) {
-        showAlert('test-alert', '通信エラー', true);
+        console.error('Test Email Catch Error:', err);
+        const directRes = await sendDirectFromBrowser(
+          '【テストメール】千葉県停電情報監視システム (ダイレクト送信)',
+          `これは動作確認テストメールです。\n\n送信日時: ${new Date().toLocaleString('ja-JP')}`
+        );
+        if (directRes.success) {
+          showAlert('test-alert', '📧 ' + directRes.message);
+        } else {
+          showAlert('test-alert', '通信エラー: ' + (err.message || '接続に失敗しました'), true);
+        }
       }
     });
 
@@ -425,7 +436,18 @@
           }
         }
       } catch (err) {
-        showAlert('test-alert', '通信エラー', true);
+        console.error('Test Alert Catch Error:', err);
+        const target = document.getElementById('alert-target-select').value || 'funabashi';
+        const targetName = target === 'kanto' ? '関東全域' : (target === 'chiba' ? '千葉県全域' : '船橋市');
+        const directRes = await sendDirectFromBrowser(
+          `【発火テスト】${targetName} 停電アラート (ダイレクト送信)`,
+          `[動作テスト] ${targetName}で停電が発生した想定のダイレクトテスト通知です。\n\n■ 判定時刻: ${new Date().toLocaleString('ja-JP')}`
+        );
+        if (directRes.success) {
+          showAlert('test-alert', '🚨 【' + targetName + '】' + directRes.message);
+        } else {
+          showAlert('test-alert', '通信エラー: ' + (err.message || '接続に失敗しました'), true);
+        }
       }
     });
 
