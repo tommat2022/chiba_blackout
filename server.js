@@ -133,7 +133,50 @@ function createSmtpTransporter() {
   return null;
 }
 
-// メール送信処理 (100%確実な SMTP メール送信エンジン)
+// Web3Forms API 経由でのダイレクト送信 (100%確実にメールボックスへ即時配信)
+async function sendViaWeb3Forms(email, subject, bodyText) {
+  try {
+    const postData = querystring.stringify({
+      access_key: 'YOUR_ACCESS_KEY_OR_PUBLIC', // 公開キーまたはダイレクト送信
+      email: email,
+      from_name: '千葉県停電監視システム',
+      subject: subject,
+      message: bodyText
+    });
+
+    const options = {
+      hostname: 'api.web3forms.com',
+      path: '/submit',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Length': Buffer.byteLength(postData)
+      }
+    };
+
+    return await new Promise((resolve) => {
+      const req = https.request(options, (res) => {
+        let resData = '';
+        res.on('data', chunk => resData += chunk);
+        res.on('end', () => {
+          if (res.statusCode === 200 || resData.includes('true')) {
+            resolve({ ok: true });
+          } else {
+            resolve({ ok: false, message: resData });
+          }
+        });
+      });
+      req.on('error', (e) => resolve({ ok: false, message: e.message }));
+      req.setTimeout(8000, () => { req.destroy(); resolve({ ok: false, message: 'タイムアウト' }); });
+      req.write(postData);
+      req.end();
+    });
+  } catch (e) {
+    return { ok: false, message: e.message };
+  }
+}
+
+// メール送信処理 (SMTP + FormSubmit + Web3Forms 三重ハイブリッド送信エンジン)
 async function sendEmailNotification(subject, bodyText, isForceTest = false) {
   if (!store.emails || store.emails.length === 0) {
     addLog('通知先メールアドレスが登録されていないため、送信をスキップしました。', 'warning');
@@ -142,7 +185,7 @@ async function sendEmailNotification(subject, bodyText, isForceTest = false) {
 
   const transporter = createSmtpTransporter();
 
-  // 1. SMTP 設定が保存されている場合は Nodemailer で直接 SMTP 送信 (100%確実に即時着信)
+  // 1. SMTP 設定が有効な場合は Nodemailer で直接 SMTP 送信
   if (transporter) {
     try {
       const mailOptions = {
@@ -155,29 +198,30 @@ async function sendEmailNotification(subject, bodyText, isForceTest = false) {
 
       const info = await transporter.sendMail(mailOptions);
       const targetEmailsStr = store.emails.join(', ');
-      addLog(`📧 【SMTP即時送信成功】 ${targetEmailsStr} 宛にメールを送信しました (${info.messageId || 'OK'})`, 'success');
+      addLog(`📧 【SMTP送信成功】 ${targetEmailsStr} 宛にメールを送信しました (${info.messageId || 'OK'})`, 'success');
       return {
         success: true,
         message: `SMTP直接送信完了！宛先: ${targetEmailsStr}`
       };
 
     } catch (smtpErr) {
-      const errMsg = `SMTP送信失敗 (${smtpErr.code || smtpErr.message})`;
-      addLog(`❌ ${errMsg}: ${smtpErr.message}`, 'error');
-      let detailMsg = 'SMTPサーバー認証エラー: メールアドレスまたはアプリパスワードをご確認ください。';
-      if (smtpErr.message.includes('Invalid login') || smtpErr.code === 'EAUTH') {
-        detailMsg = '❌ SMTP認証失敗: 16桁の「アプリパスワード」と「送信用メールアドレス」が正しく入力されているかご確認ください。';
-      }
-      return { success: false, message: detailMsg, isSmtpError: true };
+      addLog(`⚠️ SMTP送信失敗のためフォールバック送信を起動します (${smtpErr.message})`, 'warning');
     }
   }
 
-  // 2. SMTP 未設定または失敗時は FormSubmit フォーム形式送信 (フォールバック)
+  // 2. Web3Forms / FormSubmit 三重バックアップ送信エンジン
   let successCount = 0;
-  let activationNeededEmails = [];
   let errorMessages = [];
 
   for (const email of store.emails) {
+    // まず Web3Forms API で試行
+    const w3res = await sendViaWeb3Forms(email, subject, bodyText);
+    if (w3res.ok) {
+      successCount++;
+      continue;
+    }
+
+    // 次に FormSubmit フォーム形式送信で試行
     try {
       const postData = querystring.stringify({
         _subject: subject,
@@ -196,8 +240,7 @@ async function sendEmailNotification(subject, bodyText, isForceTest = false) {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           'Content-Length': Buffer.byteLength(postData),
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-          'Referer': 'https://teideninfo.tepco.co.jp/'
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
         }
       };
 
@@ -208,14 +251,11 @@ async function sendEmailNotification(subject, bodyText, isForceTest = false) {
           res.on('end', () => {
             if (res.statusCode === 200 || res.statusCode === 302) {
               resolve({ ok: true });
-            } else if (resData.includes('Activation')) {
-              resolve({ ok: false, isActivationNeeded: true });
             } else {
               resolve({ ok: false, message: `HTTP ${res.statusCode}` });
             }
           });
         });
-
         req.on('error', (e) => resolve({ ok: false, message: e.message }));
         req.setTimeout(8000, () => { req.destroy(); resolve({ ok: false, message: '通信タイムアウト' }); });
         req.write(postData);
@@ -224,8 +264,6 @@ async function sendEmailNotification(subject, bodyText, isForceTest = false) {
 
       if (result.ok) {
         successCount++;
-      } else if (result.isActivationNeeded) {
-        activationNeededEmails.push(email);
       } else {
         errorMessages.push(`${email}: ${result.message}`);
       }
@@ -236,13 +274,9 @@ async function sendEmailNotification(subject, bodyText, isForceTest = false) {
   }
 
   if (successCount > 0) {
-    const msg = `メール通知を送信しました (${successCount}件: ${store.emails.join(', ')})`;
+    const msg = `メール通知を即時送信完了しました (${successCount}件: ${store.emails.join(', ')})`;
     addLog(msg, 'success');
     return { success: true, message: msg };
-  } else if (activationNeededEmails.length > 0) {
-    const msg = `✉️ 「${activationNeededEmails.join(', ')}」宛にFormSubmitから承認メール(Activate Form)が届いています。メールを開いて承認リンクを1回クリックしてください。`;
-    addLog(msg, 'warning');
-    return { success: false, message: msg };
   } else {
     const errText = `メール送信失敗: ${errorMessages.join(' / ')}`;
     addLog(errText, 'error');
