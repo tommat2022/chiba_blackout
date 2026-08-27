@@ -132,9 +132,14 @@
             <input type="password" id="smtp-pass" placeholder="Googleアプリパスワード(16桁)またはパスワード">
           </div>
 
-          <button type="submit" class="btn btn-primary" style="margin-top: 0.2rem;">
-            💾 SMTP設定を保存して直接送信を有効化
-          </button>
+          <div style="display: flex; gap: 0.4rem; margin-top: 0.2rem;">
+            <button type="submit" class="btn btn-primary" style="flex: 2;">
+              💾 SMTP設定を保存
+            </button>
+            <button type="button" id="test-smtp-btn" class="btn btn-warning" style="flex: 1;">
+              🧪 接続テスト
+            </button>
+          </div>
         </form>
 
         <div style="margin-top: 0.6rem; font-size: 0.7rem; color: var(--text-sub);">
@@ -294,6 +299,21 @@
           showAlert('smtp-alert', '✅ SMTP直接送信設定を保存しました！以降のメールは直接届きます。');
         } else {
           showAlert('smtp-alert', data.error || '保存エラー', true);
+        }
+      } catch (err) {
+        showAlert('smtp-alert', '通信エラー', true);
+      }
+    });
+
+    document.getElementById('test-smtp-btn').addEventListener('click', async () => {
+      showAlert('smtp-alert', '⏳ SMTPサーバーへの接続・認証テスト中...');
+      try {
+        const res = await fetch('/api/test-smtp', { method: 'POST' });
+        const data = await res.json();
+        if (res.ok) {
+          showAlert('smtp-alert', data.message);
+        } else {
+          showAlert('smtp-alert', data.error || '認証エラー', true);
         }
       } catch (err) {
         showAlert('smtp-alert', '通信エラー', true);
