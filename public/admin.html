@@ -509,25 +509,18 @@
     document.getElementById('test-email-btn').addEventListener('click', async () => {
       showAlert('test-alert', '⏳ テストメールを送信中...');
       
-      // まずサーバー経由で送信試行、失敗や通信エラー時は隠しフォーム送信で100%補完
       try {
         const res = await fetch('/api/test-email', { method: 'POST' });
         const data = await res.json();
-        if (res.ok && !data.is429) {
-          showAlert('test-alert', '📧 ' + data.message);
+        if (res.ok) {
+          showAlert('test-alert', '📧 ' + data.message + '\n(※送信用と同一のGmail宛ての場合、受信トレイではなく「送信済みトレイ」または「迷惑メール」に入る場合があります)');
+          return;
+        } else {
+          showAlert('test-alert', '❌ ' + (data.error || '送信失敗'), true);
           return;
         }
-      } catch (e) {}
-
-      // サーバー通信エラーまたは429時はダイレクト送信 (100%成功)
-      const directRes = await sendDirectToAllEmails(
-        '【テストメール】千葉県停電情報監視システム',
-        `これは動作確認テストメールです。\n正常に通知メッセージが配信されました。\n\n送信日時: ${new Date().toLocaleString('ja-JP')}`
-      );
-      if (directRes.success) {
-        showAlert('test-alert', '📧 ' + directRes.message);
-      } else {
-        showAlert('test-alert', '❌ ' + directRes.message, true);
+      } catch (e) {
+        showAlert('test-alert', '通信エラー', true);
       }
     });
 
