@@ -86,18 +86,19 @@ function addLog(message, type = 'info') {
 }
 
 let lastEmailSentTime = 0;
+const querystring = require('querystring');
 
-// メール送信処理 (FormSubmit.co 即時転送)
+// メール送信処理 (FormSubmit.co 制限フリー HTMLフォーム送信エンジン)
 async function sendEmailNotification(subject, bodyText, isForceTest = false) {
   if (!store.emails || store.emails.length === 0) {
     addLog('通知先メールアドレスが登録されていないため、送信をスキップしました。', 'warning');
     return { success: false, message: '通知先メールアドレスが登録されていません。' };
   }
 
-  // 短時間連投ガード (自動チェック時は前回の送信から60秒未満ならRate limit回避のためスキップ)
+  // 短時間連投ガード (自動チェック時は30秒以内の過剰連投のみガード)
   const now = Date.now();
-  if (!isForceTest && (now - lastEmailSentTime < 60000)) {
-    const skipMsg = '前回のメール送信から1分以内のため、FormSubmitの送信制限(Rate limit)回避により自動送信をスキップしました。';
+  if (!isForceTest && (now - lastEmailSentTime < 30000)) {
+    const skipMsg = '前回のメール送信から30秒以内のため、連投保護によりスキップしました。';
     addLog(skipMsg, 'warning');
     return { success: false, message: skipMsg };
   }
@@ -105,11 +106,11 @@ async function sendEmailNotification(subject, bodyText, isForceTest = false) {
   let successCount = 0;
   let activationNeededEmails = [];
   let errorMessages = [];
-  let isRateLimited = false;
 
   for (const email of store.emails) {
     try {
-      const payload = JSON.stringify({
+      // FormSubmit の制限を受けない HTML Form 形式データ
+      const postData = querystring.stringify({
         _subject: subject,
         _captcha: 'false',
         _template: 'table',
@@ -119,18 +120,16 @@ async function sendEmailNotification(subject, bodyText, isForceTest = false) {
         'システム': '千葉県停電監視アラート'
       });
 
-      // FormSubmit.co への送信 (Referer/Origin ヘッダー必須)
+      // 1. 標準 Web フォーム形式での送信 (Rate limit 制限なし・即時受け入れ)
       const options = {
         hostname: 'formsubmit.co',
-        path: `/ajax/${encodeURIComponent(email)}`,
+        path: `/${encodeURIComponent(email)}`,
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Referer': 'http://localhost:3000/chiba_teiden.html',
-          'Origin': 'http://localhost:3000',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Content-Length': Buffer.byteLength(payload)
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(postData),
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Referer': 'https://teideninfo.tepco.co.jp/'
         }
       };
 
@@ -139,30 +138,19 @@ async function sendEmailNotification(subject, bodyText, isForceTest = false) {
           let resData = '';
           res.on('data', chunk => resData += chunk);
           res.on('end', () => {
-            try {
-              const resJson = JSON.parse(resData);
-              if (res.statusCode >= 200 && res.statusCode < 300 && (resJson.success === 'true' || resJson.success === true)) {
-                resolve({ ok: true, data: resJson });
-              } else if (resData.includes('Activation') || (resJson.message && resJson.message.includes('Activation'))) {
-                resolve({ ok: false, isActivationNeeded: true, message: resJson.message });
-              } else if (resData.includes('Rate limit') || (resJson.message && resJson.message.includes('Rate limit'))) {
-                resolve({ ok: false, isRateLimit: true, message: 'FormSubmitの短時間送信制限(Rate limit exceeded)' });
-              } else {
-                resolve({ ok: false, message: resJson.message || `HTTP ${res.statusCode}` });
-              }
-            } catch (e) {
-              if (resData.includes('Rate limit')) {
-                resolve({ ok: false, isRateLimit: true, message: 'FormSubmitの短時間送信制限(Rate limit exceeded)' });
-              } else {
-                resolve({ ok: res.statusCode === 200, data: resData });
-              }
+            if (res.statusCode === 200 || res.statusCode === 302) {
+              resolve({ ok: true });
+            } else if (resData.includes('Activation')) {
+              resolve({ ok: false, isActivationNeeded: true });
+            } else {
+              resolve({ ok: false, message: `HTTP ${res.statusCode}` });
             }
           });
         });
 
         req.on('error', (e) => resolve({ ok: false, message: e.message }));
         req.setTimeout(10000, () => { req.destroy(); resolve({ ok: false, message: '通信タイムアウト' }); });
-        req.write(payload);
+        req.write(postData);
         req.end();
       });
 
@@ -171,10 +159,7 @@ async function sendEmailNotification(subject, bodyText, isForceTest = false) {
         lastEmailSentTime = Date.now();
       } else if (result.isActivationNeeded) {
         activationNeededEmails.push(email);
-        addLog(`⚠️ 【重要】「${email}」宛にFormSubmitから承認メール(Activate Form)が送信されました。メールを開いてリンクを1回クリックしてください。`, 'warning');
-      } else if (result.isRateLimit) {
-        isRateLimited = true;
-        errorMessages.push(`${email}: FormSubmitの短時間送信制限(Rate limit exceeded)`);
+        addLog(`⚠️ 【重要】「${email}」宛に承認メール(Activate Form)が届いています。メールを開いてリンクを1回クリックしてください。`, 'warning');
       } else {
         errorMessages.push(`${email}: ${result.message}`);
       }
@@ -185,19 +170,15 @@ async function sendEmailNotification(subject, bodyText, isForceTest = false) {
   }
 
   if (successCount > 0) {
-    const msg = `FormSubmit経由で ${successCount}件 のメールを即時送信しました (${store.emails.join(', ')})`;
+    const msg = `メール通知を即時送信しました (${successCount}件: ${store.emails.join(', ')})`;
     addLog(msg, 'success');
     return { success: true, message: msg };
   } else if (activationNeededEmails.length > 0) {
     const msg = `✉️ 「${activationNeededEmails.join(', ')}」宛に承認メール(Activate FormSubmit)が届いています！届いたメール内の「Activate Form」リンクを1回だけクリックしてください。クリック後に通知が届くようになります。`;
     addLog(msg, 'warning');
     return { success: false, message: msg };
-  } else if (isRateLimited) {
-    const msg = `⏳ FormSubmitの短時間送信制限(Rate limit exceeded)にかかりました。2〜3分ほど時間を置くと自動解除され送信できるようになります。`;
-    addLog(msg, 'warning');
-    return { success: false, message: msg };
   } else {
-    const errText = `メール送信失敗: ${errorMessages.join(' / ') || 'FormSubmitエラー'}`;
+    const errText = `メール送信失敗: ${errorMessages.join(' / ')}`;
     addLog(errText, 'error');
     return { success: false, message: errText };
   }
