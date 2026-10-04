@@ -159,7 +159,7 @@
             🧪 1回限定 自動検知シミュレーション予約
           </button>
           <div style="font-size: 0.72rem; color: var(--text-sub); padding: 0.3rem 0.5rem; background: var(--bg-primary); border-radius: 6px; border: 1px dashed var(--border-color);">
-            ※「1回限定予約」を押すと、次回の定期チェック（またはTOP画面の更新）時に、東電から船橋市停電1,500軒が届いた状態を再現し、定期監視システムが自動検知してメール送信する挙動を検証できます。
+            ※「1回限定予約」を押すと、次回の定期チェック（またはTOP画面の更新）時に、東電12204000000から船橋市停電1,500軒（本町・湊町・海神の地区別情報＋復旧見込み）が届いた状態を再現し、定期監視システムが自動検知してメール送信・画面表示する挙動を検証できます。
           </div>
           <button id="clear-test-btn" class="btn btn-secondary">
             🧹 停電データを正常（0件）に復帰
@@ -345,43 +345,81 @@
       updateToggleLabel(e.target.checked);
     });
 
-    document.getElementById('test-email-btn').addEventListener('click', async () => {
+    // ボタン連打防止＆クールダウンヘルパー
+    function setButtonLoading(btn, isLoading, loadingText = '⏳ 送信中...', cooldownSec = 5) {
+      if (isLoading) {
+        btn.disabled = true;
+        btn.dataset.originalText = btn.innerText;
+        btn.innerText = loadingText;
+      } else {
+        let remaining = cooldownSec;
+        btn.innerText = `⏳ 待機中 (${remaining}秒)`;
+        const timer = setInterval(() => {
+          remaining--;
+          if (remaining > 0) {
+            btn.innerText = `⏳ 待機中 (${remaining}秒)`;
+          } else {
+            clearInterval(timer);
+            btn.disabled = false;
+            btn.innerText = btn.dataset.originalText || '送信';
+          }
+        }, 1000);
+      }
+    }
+
+    document.getElementById('test-email-btn').addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      setButtonLoading(btn, true, '📧 テストメール送信中...');
       try {
         const res = await fetch('/api/test-email', { method: 'POST' });
         const data = await res.json();
         showAlert('test-alert', res.ok ? '📧 ' + data.message : '❌ ' + data.error, !res.ok);
       } catch (err) {
-        showAlert('test-alert', '通信エラー', true);
+        showAlert('test-alert', '通信エラーが発生しました', true);
+      } finally {
+        setButtonLoading(btn, false, '', 5);
       }
     });
 
-    document.getElementById('test-funabashi-alert-btn').addEventListener('click', async () => {
+    document.getElementById('test-funabashi-alert-btn').addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      setButtonLoading(btn, true, '🚨 アラート発火中...');
       try {
         const res = await fetch('/api/test-alert', { method: 'POST' });
         const data = await res.json();
         showAlert('test-alert', res.ok ? '🚨 ' + data.message : '❌ ' + data.error, !res.ok);
       } catch (err) {
-        showAlert('test-alert', '通信エラー', true);
+        showAlert('test-alert', '通信エラーが発生しました', true);
+      } finally {
+        setButtonLoading(btn, false, '', 5);
       }
     });
 
-    document.getElementById('simulate-next-check-btn').addEventListener('click', async () => {
+    document.getElementById('simulate-next-check-btn').addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      setButtonLoading(btn, true, '🧪 予約中...');
       try {
         const res = await fetch('/api/simulate-next-check', { method: 'POST' });
         const data = await res.json();
         showAlert('test-alert', res.ok ? '🧪 ' + data.message : '❌ ' + data.error, !res.ok);
       } catch (err) {
-        showAlert('test-alert', '通信エラー', true);
+        showAlert('test-alert', '通信エラーが発生しました', true);
+      } finally {
+        setButtonLoading(btn, false, '', 3);
       }
     });
 
-    document.getElementById('clear-test-btn').addEventListener('click', async () => {
+    document.getElementById('clear-test-btn').addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      setButtonLoading(btn, true, '🧹 リセット中...');
       try {
         const res = await fetch('/api/clear-test', { method: 'POST' });
         const data = await res.json();
         showAlert('test-alert', res.ok ? '🧹 ' + data.message : '❌ ' + data.error, !res.ok);
       } catch (err) {
-        showAlert('test-alert', '通信エラー', true);
+        showAlert('test-alert', '通信エラーが発生しました', true);
+      } finally {
+        setButtonLoading(btn, false, '', 3);
       }
     });
 
