@@ -12,11 +12,12 @@
   "previousKantoCount": 630,
   "smtp": {
     "enabled": false,
-    "host": "smtp.gmail.com",
-    "port": 587,
-    "user": "",
+    "service": "resend",
+    "host": "smtp.resend.com",
+    "port": 465,
+    "user": "resend",
     "pass": "",
-    "from": ""
+    "from": "onboarding@resend.dev"
   },
   "cities": [
     {
