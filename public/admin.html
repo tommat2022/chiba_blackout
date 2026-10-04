@@ -98,13 +98,13 @@
         </div>
       </div>
 
-      <!-- 2. メール送信方式・SMTP設定 (Gmail直接送信) -->
+      <!-- 2. メール送信方式・SMTP設定 (Resend / Gmail) -->
       <div class="main-card">
         <div style="font-size: 1rem; font-weight: 700; margin-bottom: 0.5rem;">
-          ✉️ メール送信方式・SMTP設定
+          ✉️ メール送信方式・SMTP設定 (Resend / Gmail)
         </div>
         <div style="font-size: 0.8rem; color: var(--text-sub); margin-bottom: 0.75rem;">
-          ご自身の Gmail アカウント（アプリパスワード）を設定すると、FormSubmit の制限を受けずに直接100%確実にメールが送信されます。
+          Resend の APIキーを設定すると、FormSubmit の制限を受けずにクラウド（Render等）から100%確実にメールが送信されます。
         </div>
 
         <div id="smtp-alert" class="alert-box success" style="display: none;"></div>
@@ -112,7 +112,7 @@
         <div class="form-group">
           <label>送信方式の選択</label>
           <div class="toggle-container">
-            <span id="smtp-toggle-label" style="font-weight: 600; font-size: 0.85rem;">Gmail/SMTP直接送信: 無効 (FormSubmit使用)</span>
+            <span id="smtp-toggle-label" style="font-weight: 600; font-size: 0.85rem;">SMTP直接送信: 無効 (FormSubmit使用)</span>
             <label class="switch">
               <input type="checkbox" id="smtp-toggle">
               <span class="slider"></span>
@@ -122,15 +122,40 @@
 
         <div id="smtp-fields" style="display: flex; flex-direction: column; gap: 0.75rem;">
           <div class="form-group" style="margin-bottom: 0;">
-            <label for="smtp-user">送信元 Gmail アドレス (例: mattom2016@gmail.com)</label>
+            <label for="smtp-service-select">利用するメール配信サービス</label>
+            <select id="smtp-service-select">
+              <option value="resend" selected>🚀 Resend (おすすめ・APIキー入力のみ)</option>
+              <option value="gmail">📧 Gmail (アプリパスワード)</option>
+              <option value="custom">⚙️ カスタムSMTPサーバー</option>
+            </select>
+          </div>
+
+          <!-- Resend ガイド -->
+          <div id="resend-help-box" style="background: var(--bg-primary); padding: 0.65rem 0.85rem; border-radius: 8px; border: 1px dashed var(--accent-blue); font-size: 0.75rem; color: var(--text-sub); line-height: 1.5;">
+            <strong style="color: var(--accent-blue);">💡 Resend の始め方（無料・登録後1分で完了）:</strong><br>
+            1. <a href="https://resend.com" target="_blank" rel="noopener noreferrer" style="color: var(--accent-blue); font-weight: 600; text-decoration: underline;">resend.com 🌐</a> で無料アカウントを作成<br>
+            2. 左メニュー「<strong>API Keys</strong>」→「Create API Key」でキーを発行<br>
+            3. 発行された <code>re_...</code> を下の「Resend API キー」欄に貼り付けて保存するだけです。
+          </div>
+
+          <div class="form-group" id="smtp-user-group" style="margin-bottom: 0; display: none;">
+            <label for="smtp-user" id="smtp-user-label">送信元 Gmail アドレス</label>
             <input type="email" id="smtp-user" placeholder="example@gmail.com">
           </div>
 
           <div class="form-group" style="margin-bottom: 0;">
-            <label for="smtp-pass">Google アプリパスワード (16桁)</label>
-            <input type="password" id="smtp-pass" placeholder="Googleアカウントで発行した16桁のパスワード">
+            <label for="smtp-pass" id="smtp-pass-label">Resend API キー (re_...)</label>
+            <input type="password" id="smtp-pass" placeholder="re_123456789...">
+            <div id="smtp-pass-hint" style="font-size: 0.72rem; color: var(--text-sub); margin-top: 0.25rem;">
+              ※ Resend管理画面で発行した <code>re_...</code> から始まるAPIキーを入力してください。
+            </div>
+          </div>
+
+          <div class="form-group" id="smtp-from-group" style="margin-bottom: 0;">
+            <label for="smtp-from">送信元アドレス (From)</label>
+            <input type="text" id="smtp-from" placeholder="onboarding@resend.dev" value="onboarding@resend.dev">
             <div style="font-size: 0.72rem; color: var(--text-sub); margin-top: 0.25rem;">
-              ※ Googleアカウント「セキュリティ」→「2段階認証」→「アプリ パスワード」で作成できます（スペース不要）。
+              ※ 独自ドメイン未設定のテスト時は <code>onboarding@resend.dev</code> のままでOKです。
             </div>
           </div>
 
@@ -139,7 +164,7 @@
               💾 SMTP設定を保存
             </button>
             <button id="test-smtp-btn" class="btn btn-warning" style="flex: 1;">
-              📧 SMTP接続テスト送信
+              📧 接続テストメール送信
             </button>
           </div>
         </div>
@@ -271,17 +296,60 @@
         const toggle = document.getElementById('smtp-toggle');
         toggle.checked = !!smtp.enabled;
         updateSmtpToggleLabel(!!smtp.enabled);
+
+        const service = smtp.service || 'resend';
+        document.getElementById('smtp-service-select').value = service;
         document.getElementById('smtp-user').value = smtp.user || '';
+        document.getElementById('smtp-from').value = smtp.from || (service === 'resend' ? 'onboarding@resend.dev' : '');
         document.getElementById('smtp-pass').value = '';
-        document.getElementById('smtp-pass').placeholder = smtp.hasPass ? '●●●●●●●● (登録済み・変更時のみ入力)' : 'Googleで発行した16桁のアプリパスワード';
+
+        updateSmtpServiceUI(service, smtp.hasPass);
       } catch (err) {
         console.error('Failed to load SMTP settings:', err);
       }
     }
 
+    function updateSmtpServiceUI(service, hasPass = false) {
+      const resendHelp = document.getElementById('resend-help-box');
+      const userGroup = document.getElementById('smtp-user-group');
+      const passLabel = document.getElementById('smtp-pass-label');
+      const passInput = document.getElementById('smtp-pass');
+      const passHint = document.getElementById('smtp-pass-hint');
+      const fromInput = document.getElementById('smtp-from');
+
+      if (service === 'resend') {
+        resendHelp.style.display = 'block';
+        userGroup.style.display = 'none';
+        passLabel.innerText = 'Resend API キー (re_...)';
+        passInput.placeholder = hasPass ? '●●●●●●●● (登録済み・変更時のみ入力)' : 're_123456789...';
+        passHint.innerHTML = '※ Resend管理画面の「API Keys」から作成した <code>re_...</code> を貼り付けてください。';
+        if (!fromInput.value) fromInput.value = 'onboarding@resend.dev';
+      } else if (service === 'gmail') {
+        resendHelp.style.display = 'none';
+        userGroup.style.display = 'block';
+        document.getElementById('smtp-user-label').innerText = '送信元 Gmail アドレス';
+        passLabel.innerText = 'Google アプリパスワード (16桁)';
+        passInput.placeholder = hasPass ? '●●●●●●●● (登録済み・変更時のみ入力)' : '16桁のアプリパスワード';
+        passHint.innerHTML = '※ Googleアカウント「セキュリティ」→「2段階認証」→「アプリ パスワード」で作成できます。';
+        fromInput.placeholder = 'example@gmail.com';
+      } else {
+        resendHelp.style.display = 'none';
+        userGroup.style.display = 'block';
+        document.getElementById('smtp-user-label').innerText = 'SMTP ユーザー名 / メールアドレス';
+        passLabel.innerText = 'SMTP パスワード';
+        passInput.placeholder = hasPass ? '●●●●●●●● (登録済み・変更時のみ入力)' : 'SMTPパスワード';
+        passHint.innerHTML = '※ ご利用のSMTPサーバーのパスワードを入力してください。';
+        fromInput.placeholder = 'noreply@yourdomain.com';
+      }
+    }
+
+    document.getElementById('smtp-service-select').addEventListener('change', (e) => {
+      updateSmtpServiceUI(e.target.value);
+    });
+
     function updateSmtpToggleLabel(isEnabled) {
       const label = document.getElementById('smtp-toggle-label');
-      label.innerText = isEnabled ? 'Gmail/SMTP直接送信: 有効 (直接送信・推奨)' : 'Gmail/SMTP直接送信: 無効 (FormSubmit使用)';
+      label.innerText = isEnabled ? 'SMTP直接送信: 有効 (直接送信・推奨)' : 'SMTP直接送信: 無効 (FormSubmit使用)';
       label.style.color = isEnabled ? 'var(--success-green)' : 'var(--text-sub)';
       document.getElementById('smtp-fields').style.opacity = isEnabled ? '1' : '0.85';
     }
@@ -294,8 +362,10 @@
       const btn = e.currentTarget;
       setButtonLoading(btn, true, '💾 保存中...');
       const enabled = document.getElementById('smtp-toggle').checked;
+      const service = document.getElementById('smtp-service-select').value;
       const user = document.getElementById('smtp-user').value.trim();
       const pass = document.getElementById('smtp-pass').value.trim();
+      const from = document.getElementById('smtp-from').value.trim();
 
       try {
         const res = await fetch('/api/smtp-settings', {
@@ -303,11 +373,10 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             enabled,
-            host: 'smtp.gmail.com',
-            port: 587,
+            service,
             user,
             pass: pass || undefined,
-            from: user
+            from: from || undefined
           })
         });
         const data = await res.json();
@@ -322,7 +391,7 @@
 
     document.getElementById('test-smtp-btn').addEventListener('click', async (e) => {
       const btn = e.currentTarget;
-      setButtonLoading(btn, true, '📧 SMTP接続テスト中...');
+      setButtonLoading(btn, true, '📧 接続テスト中...');
       try {
         const res = await fetch('/api/test-smtp', { method: 'POST' });
         const data = await res.json();
