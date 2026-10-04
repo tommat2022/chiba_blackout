@@ -29,7 +29,7 @@ const activeSessions = new Map();
 
 // データストアの読み込みと保存
 let store = {
-  emails: ['example@funabashi-saigai.jp'],
+  emails: [process.env.ALERT_EMAIL || 'mattom2016@gmail.com'],
   isMonitoringActive: true,
   intervalMinutes: 30,
   alertTarget: 'funabashi', // 'funabashi' | 'chiba' | 'kanto'
@@ -41,7 +41,15 @@ let store = {
   cities: [],
   funabashi: { name: '船橋市', count: 0, areas: [], detail: '', updateTime: '', notices: [] },
   kanto: [],
-  logs: []
+  logs: [],
+  smtp: {
+    enabled: false,
+    host: 'smtp.gmail.com',
+    port: 587,
+    user: '',
+    pass: '',
+    from: ''
+  }
 };
 
 function loadStore() {
@@ -95,28 +103,40 @@ async function sendEmailNotification(subject, bodyText) {
     return { success: false, message: '通知先メールアドレスが登録されていません。' };
   }
 
-  // 1. 環境変数に SMTP 設定がある場合は SMTP 経由で直接確実に送信
-  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+  // 1. SMTP 設定（管理画面設定 または 環境変数）がある場合は SMTP 経由で直接確実に送信
+  const smtpConfig = (store.smtp && store.smtp.enabled && store.smtp.user && store.smtp.pass)
+    ? store.smtp
+    : (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS)
+      ? {
+          host: process.env.SMTP_HOST,
+          port: Number(process.env.SMTP_PORT) || 587,
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS,
+          from: process.env.SMTP_FROM || process.env.SMTP_USER
+        }
+      : null;
+
+  if (smtpConfig) {
     try {
       const nodemailer = require('nodemailer');
       const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: Number(process.env.SMTP_PORT) || 587,
-        secure: Number(process.env.SMTP_PORT) === 465,
+        host: smtpConfig.host || 'smtp.gmail.com',
+        port: Number(smtpConfig.port) || 587,
+        secure: Number(smtpConfig.port) === 465,
         auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS
+          user: smtpConfig.user,
+          pass: smtpConfig.pass
         }
       });
 
       await transporter.sendMail({
-        from: process.env.SMTP_FROM || `"千葉県停電監視" <${process.env.SMTP_USER}>`,
+        from: smtpConfig.from || `"千葉県停電監視" <${smtpConfig.user}>`,
         to: store.emails.join(', '),
         subject: subject,
         text: bodyText
       });
 
-      const msg = `SMTP経由で ${store.emails.length}件 のメールを直接送信しました (${store.emails.join(', ')})`;
+      const msg = `SMTP (${smtpConfig.user}) 経由で ${store.emails.length}件 のメールを直接送信しました (${store.emails.join(', ')})`;
       addLog(msg, 'success');
       return { success: true, message: msg };
     } catch (smtpErr) {
@@ -902,6 +922,85 @@ const server = http.createServer((req, res) => {
     });
   }
 
+  // 12. SMTP設定取得・更新 (要ログイン)
+  if (pathname === '/api/smtp-settings' && req.method === 'GET') {
+    if (!isAuthenticated(req)) return sendJson(401, { error: 'ログインが必要です' });
+    const smtp = store.smtp || { enabled: false, host: 'smtp.gmail.com', port: 587, user: '', pass: '', from: '' };
+    return sendJson(200, {
+      enabled: !!smtp.enabled,
+      host: smtp.host || 'smtp.gmail.com',
+      port: smtp.port || 587,
+      user: smtp.user || '',
+      hasPass: !!(smtp.pass),
+      from: smtp.from || ''
+    });
+  }
+
+  if (pathname === '/api/smtp-settings' && req.method === 'POST') {
+    if (!isAuthenticated(req)) return sendJson(401, { error: 'ログインが必要です' });
+    return parseJsonBody(({ enabled, host, port, user, pass, from }) => {
+      store.smtp = store.smtp || {};
+      store.smtp.enabled = !!enabled;
+      if (host) store.smtp.host = host.trim();
+      if (port) store.smtp.port = Number(port) || 587;
+      if (user) store.smtp.user = user.trim();
+      if (pass && pass.trim() !== '') store.smtp.pass = pass.trim();
+      if (from) store.smtp.from = from.trim();
+      
+      saveStore();
+      addLog(`SMTP設定を更新しました (有効: ${store.smtp.enabled ? 'ON' : 'OFF'}, ユーザー: ${store.smtp.user || '未設定'})`, 'info');
+      return sendJson(200, { success: true, message: 'SMTP設定を保存しました。' });
+    });
+  }
+
+  // 13. SMTP接続・テスト送信 (要ログイン)
+  if (pathname === '/api/test-smtp' && req.method === 'POST') {
+    if (!isAuthenticated(req)) return sendJson(401, { error: 'ログインが必要です' });
+    (async () => {
+      const smtp = store.smtp;
+      if (!smtp || !smtp.user || !smtp.pass) {
+        return sendJson(400, { error: 'SMTPユーザー名とアプリパスワードが設定されていません。先に設定を入力・保存してください。' });
+      }
+      try {
+        const nodemailer = require('nodemailer');
+        const transporter = nodemailer.createTransport({
+          host: smtp.host || 'smtp.gmail.com',
+          port: Number(smtp.port) || 587,
+          secure: Number(smtp.port) === 465,
+          auth: {
+            user: smtp.user,
+            pass: smtp.pass
+          }
+        });
+
+        await transporter.verify();
+
+        const subject = '【接続テスト】Gmail SMTP 直接送信テスト成功';
+        const body = `これは千葉県停電監視システムからの Gmail SMTP 直接送信テストメールです。\n\n` +
+                     `■ 送信元: ${smtp.user}\n` +
+                     `■ 送信先: ${store.emails.join(', ')}\n` +
+                     `■ 送信日時: ${new Date().toLocaleString('ja-JP')}\n\n` +
+                     `SMTP接続と認証が正常に動作しています。FormSubmit等の外部サービスを介さず直接送信されます。`;
+
+        await transporter.sendMail({
+          from: smtp.from || `"千葉県停電監視" <${smtp.user}>`,
+          to: store.emails.join(', '),
+          subject: subject,
+          text: body
+        });
+
+        const msg = `Gmail SMTP接続テストに成功しました！ ${store.emails.join(', ')} 宛にテストメールを直接送信しました。`;
+        addLog(msg, 'success');
+        return sendJson(200, { message: msg });
+      } catch (err) {
+        const errMsg = `SMTP送信失敗: ${err.message}`;
+        addLog(errMsg, 'error');
+        return sendJson(400, { error: errMsg });
+      }
+    })();
+    return;
+  }
+
   // --- 静的ファイル配信 ---
   let filePath = path.join(PUBLIC_DIR, pathname === '/' ? 'chiba_teiden.html' : pathname);
   
@@ -936,8 +1035,9 @@ const server = http.createServer((req, res) => {
 
 // 起動処理
 loadStore();
-server.listen(PORT, () => {
-  addLog(`千葉県停電監視サーバーがポート ${PORT} で起動しました。`, 'info');
+const HOST = (process.env.RENDER || process.env.NODE_ENV === 'production') ? '0.0.0.0' : '127.0.0.1';
+server.listen(PORT, HOST, () => {
+  addLog(`千葉県停電監視サーバーが ${HOST}:${PORT} で安全に起動しました。`, 'info');
   restartMonitoringScheduler();
   // 初回データ取得を実行
   checkPowerOutages(true);
