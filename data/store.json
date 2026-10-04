@@ -6,10 +6,18 @@
   "intervalMinutes": 30,
   "alertTarget": "funabashi",
   "isNextCheckSimulated": false,
-  "lastCheck": "2026-08-25T13:24:58.945Z",
-  "previousFunabashiCount": 0,
-  "previousChibaCount": 0,
-  "previousKantoCount": 440,
+  "lastCheck": "2026-10-04T04:37:52.836Z",
+  "previousFunabashiCount": 1200,
+  "previousChibaCount": 640,
+  "previousKantoCount": 630,
+  "smtp": {
+    "enabled": false,
+    "host": "smtp.gmail.com",
+    "port": 587,
+    "user": "",
+    "pass": "",
+    "from": ""
+  },
   "cities": [
     {
       "name": "旭市",
@@ -38,7 +46,7 @@
     },
     {
       "name": "市原市",
-      "count": 0,
+      "count": 160,
       "areas": []
     },
     {
@@ -58,7 +66,7 @@
     },
     {
       "name": "大多喜町",
-      "count": 0,
+      "count": 20,
       "areas": []
     },
     {
@@ -88,17 +96,17 @@
     },
     {
       "name": "鴨川市",
-      "count": 0,
+      "count": 30,
       "areas": []
     },
     {
       "name": "木更津市",
-      "count": 0,
+      "count": 90,
       "areas": []
     },
     {
       "name": "君津市",
-      "count": 0,
+      "count": 60,
       "areas": []
     },
     {
@@ -158,7 +166,7 @@
     },
     {
       "name": "袖ケ浦市",
-      "count": 0,
+      "count": 90,
       "areas": []
     },
     {
@@ -173,7 +181,7 @@
     },
     {
       "name": "千葉市稲毛区",
-      "count": 0,
+      "count": 50,
       "areas": []
     },
     {
@@ -213,7 +221,7 @@
     },
     {
       "name": "長南町",
-      "count": 0,
+      "count": 10,
       "areas": []
     },
     {
@@ -233,7 +241,7 @@
     },
     {
       "name": "長柄町",
-      "count": 0,
+      "count": 70,
       "areas": []
     },
     {
@@ -258,13 +266,32 @@
     },
     {
       "name": "富津市",
-      "count": 0,
+      "count": 20,
       "areas": []
     },
     {
       "name": "船橋市",
-      "count": 0,
-      "areas": []
+      "count": 1200,
+      "areas": [
+        {
+          "code": "12204001000",
+          "name": "船橋市本町1丁目",
+          "count": 600,
+          "countText": "約600軒"
+        },
+        {
+          "code": "12204002000",
+          "name": "船橋市湊町2丁目",
+          "count": 400,
+          "countText": "約400軒"
+        },
+        {
+          "code": "12204003000",
+          "name": "船橋市海神3丁目",
+          "count": 200,
+          "countText": "約200軒"
+        }
+      ]
     },
     {
       "name": "松戸市",
@@ -283,7 +310,7 @@
     },
     {
       "name": "茂原市",
-      "count": 0,
+      "count": 40,
       "areas": []
     },
     {
@@ -309,8 +336,32 @@
   ],
   "funabashi": {
     "name": "船橋市",
-    "count": 0,
-    "areas": []
+    "count": 1200,
+    "areas": [
+      {
+        "code": "12204001000",
+        "name": "船橋市本町1丁目",
+        "count": 600,
+        "countText": "約600軒"
+      },
+      {
+        "code": "12204002000",
+        "name": "船橋市湊町2丁目",
+        "count": 400,
+        "countText": "約400軒"
+      },
+      {
+        "code": "12204003000",
+        "name": "船橋市海神3丁目",
+        "count": 200,
+        "countText": "約200軒"
+      }
+    ],
+    "detail": "【動作テスト】変電設備点検に伴い、以下の地区で停電が発生している想定です。復旧見込みは1時間後を予定しています。",
+    "updateTime": "13:37",
+    "notices": [
+      "船橋市内で停電が発生しております（動作テスト）"
+    ]
   },
   "kanto": [
     {
@@ -320,7 +371,7 @@
     },
     {
       "name": "栃木県",
-      "count": 440,
+      "count": 0,
       "areas": []
     },
     {
@@ -335,7 +386,7 @@
     },
     {
       "name": "千葉県",
-      "count": 0,
+      "count": 630,
       "areas": []
     },
     {
@@ -361,94 +412,39 @@
   ],
   "logs": [
     {
-      "timestamp": "2026-08-25T13:24:58.945Z",
-      "type": "info",
-      "message": "チェック完了: 千葉県全域 0軒 / 関東全域 440軒 / 船橋市 0軒 (対象設定: funabashi)"
+      "timestamp": "2026-10-04T04:37:53.606Z",
+      "type": "success",
+      "message": "FormSubmit経由で 1件 のメールを即時送信しました (mattom2016@gmail.com)"
     },
     {
-      "timestamp": "2026-08-25T13:24:58.814Z",
-      "type": "info",
-      "message": "東京電力 停電情報データをチェック中... (手動実行)"
+      "timestamp": "2026-10-04T04:37:52.811Z",
+      "type": "warning",
+      "message": "🧪 【動作テスト】アラート発火テストを実行しました (対象範囲: funabashi)"
     },
     {
-      "timestamp": "2026-08-25T13:24:58.813Z",
+      "timestamp": "2026-10-04T04:37:44.490Z",
+      "type": "info",
+      "message": "管理者 (hokensho) がログインしました。"
+    },
+    {
+      "timestamp": "2026-10-04T04:36:59.708Z",
+      "type": "info",
+      "message": "チェック完了: 千葉県全域 640軒 / 関東全域 630軒 / 船橋市 0軒 (地区情報: 0地区, 対象設定: funabashi)"
+    },
+    {
+      "timestamp": "2026-10-04T04:36:59.498Z",
+      "type": "info",
+      "message": "東京電力 停電情報データをチェック中... (手動・設定変更実行)"
+    },
+    {
+      "timestamp": "2026-10-04T04:36:59.497Z",
       "type": "info",
       "message": "バックグラウンド監視タイマーを開始しました (間隔: 30分)"
     },
     {
-      "timestamp": "2026-08-25T13:24:58.752Z",
+      "timestamp": "2026-10-04T04:36:59.493Z",
       "type": "info",
       "message": "千葉県停電監視サーバーがポート 3000 で起動しました。"
-    },
-    {
-      "timestamp": "2026-08-23T04:44:01.100Z",
-      "type": "info",
-      "message": "チェック完了: 千葉県全域停電件数 0軒 / 船橋市停電件数 0軒"
-    },
-    {
-      "timestamp": "2026-08-23T04:44:00.487Z",
-      "type": "info",
-      "message": "東京電力 停電情報データをチェック中... (定期チェック)"
-    },
-    {
-      "timestamp": "2026-08-23T04:14:00.468Z",
-      "type": "info",
-      "message": "監視設定を変更しました (稼働: ON, 間隔: 30分)"
-    },
-    {
-      "timestamp": "2026-08-23T04:14:00.467Z",
-      "type": "info",
-      "message": "バックグラウンド監視タイマーを開始しました (間隔: 30分)"
-    },
-    {
-      "timestamp": "2026-08-23T04:13:55.750Z",
-      "type": "info",
-      "message": "管理者 (hokensho) がログインしました。"
-    },
-    {
-      "timestamp": "2026-08-23T04:13:37.096Z",
-      "type": "info",
-      "message": "管理者 (hokensho) がログインしました。"
-    },
-    {
-      "timestamp": "2026-08-23T04:06:02.168Z",
-      "type": "info",
-      "message": "チェック完了: 千葉県全域停電件数 0軒 / 船橋市停電件数 0軒"
-    },
-    {
-      "timestamp": "2026-08-23T04:06:02.023Z",
-      "type": "info",
-      "message": "東京電力 停電情報データをチェック中... (定期チェック)"
-    },
-    {
-      "timestamp": "2026-08-23T03:36:02.180Z",
-      "type": "info",
-      "message": "チェック完了: 千葉県全域停電件数 0軒 / 船橋市停電件数 0軒"
-    },
-    {
-      "timestamp": "2026-08-23T03:36:02.000Z",
-      "type": "info",
-      "message": "東京電力 停電情報データをチェック中... (定期チェック)"
-    },
-    {
-      "timestamp": "2026-08-23T03:06:03.428Z",
-      "type": "info",
-      "message": "チェック完了: 千葉県全域停電件数 0軒 / 船橋市停電件数 0軒"
-    },
-    {
-      "timestamp": "2026-08-23T03:06:02.051Z",
-      "type": "info",
-      "message": "東京電力 停電情報データをチェック中... (定期チェック)"
-    },
-    {
-      "timestamp": "2026-08-23T02:36:02.247Z",
-      "type": "info",
-      "message": "チェック完了: 千葉県全域停電件数 0軒 / 船橋市停電件数 0軒"
-    },
-    {
-      "timestamp": "2026-08-23T02:36:01.930Z",
-      "type": "info",
-      "message": "東京電力 停電情報データをチェック中... (定期チェック)"
     },
     {
       "timestamp": "2026-08-23T02:06:47.204Z",
