@@ -263,6 +263,71 @@ main {
   color: var(--danger-red);
 }
 
+/* 船橋市 地区別停電グリッド・詳細スタイル */
+.district-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+
+.district-item {
+  background: var(--bg-primary);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: 8px;
+  padding: 0.5rem 0.65rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.25rem;
+  transition: transform 0.1s ease;
+}
+
+.district-item:hover {
+  transform: translateY(-1px);
+  border-color: var(--danger-red);
+}
+
+.district-name {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-main);
+  word-break: break-all;
+}
+
+.district-count {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--danger-red);
+  text-align: right;
+}
+
+.funabashi-detail-box {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  border-radius: 8px;
+  padding: 0.75rem 0.85rem;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.funabashi-detail-header {
+  font-weight: 700;
+  color: var(--warning-amber);
+  margin-bottom: 0.3rem;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.82rem;
+}
+
+.funabashi-detail-text {
+  color: var(--text-main);
+  white-space: pre-wrap;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
 /* ログコンテナ */
 .log-card {
   background-color: var(--bg-card);
@@ -327,6 +392,13 @@ main {
 .btn-warning:active { background-color: #fcd34d; }
 .btn-secondary { background-color: var(--bg-card-hover); color: var(--text-main); border: 1px solid var(--border-color); }
 .btn-secondary:active { background-color: #475569; }
+
+button:disabled, .btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  filter: grayscale(0.4);
+  transform: none !important;
+}
 
 /* フォームグループ */
 .form-group {
