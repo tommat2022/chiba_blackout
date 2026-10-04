@@ -92,13 +92,60 @@
 
         <!-- FormSubmit 初回認証の親切案内 -->
         <div style="margin-top: 1.25rem; background: var(--bg-primary); padding: 0.75rem 0.85rem; border-radius: 8px; border: 1px solid var(--border-color); font-size: 0.75rem; color: var(--text-sub);">
-          <strong style="color: var(--warning-amber);">💡 初回メール受信時のご注意（有効化手順）</strong><br>
-          新しいメールアドレスを追加後、初めてテストメールまたはアラートが送信されると、FormSubmitから確認メール「<em>Activate FormSubmit</em>」が届きます。<br>
-          メール内の **「Activate Form」** ボタンを1回クリックしてください。以降、すべての停電アラートが自動受信されます。
+          <strong style="color: var(--warning-amber);">💡 初回メール受信時のご注意（FormSubmit使用時）</strong><br>
+          FormSubmit経由の場合、初めてテストメールまたはアラートが送信されると、確認メール「<em>Activate FormSubmit</em>」が届きます。<br>
+          メール内の **「Activate Form」** ボタンを1回クリックしてください。
         </div>
       </div>
 
-      <!-- 2. バックグラウンド監視設定 -->
+      <!-- 2. メール送信方式・SMTP設定 (Gmail直接送信) -->
+      <div class="main-card">
+        <div style="font-size: 1rem; font-weight: 700; margin-bottom: 0.5rem;">
+          ✉️ メール送信方式・SMTP設定
+        </div>
+        <div style="font-size: 0.8rem; color: var(--text-sub); margin-bottom: 0.75rem;">
+          ご自身の Gmail アカウント（アプリパスワード）を設定すると、FormSubmit の制限を受けずに直接100%確実にメールが送信されます。
+        </div>
+
+        <div id="smtp-alert" class="alert-box success" style="display: none;"></div>
+
+        <div class="form-group">
+          <label>送信方式の選択</label>
+          <div class="toggle-container">
+            <span id="smtp-toggle-label" style="font-weight: 600; font-size: 0.85rem;">Gmail/SMTP直接送信: 無効 (FormSubmit使用)</span>
+            <label class="switch">
+              <input type="checkbox" id="smtp-toggle">
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div id="smtp-fields" style="display: flex; flex-direction: column; gap: 0.75rem;">
+          <div class="form-group" style="margin-bottom: 0;">
+            <label for="smtp-user">送信元 Gmail アドレス (例: mattom2016@gmail.com)</label>
+            <input type="email" id="smtp-user" placeholder="example@gmail.com">
+          </div>
+
+          <div class="form-group" style="margin-bottom: 0;">
+            <label for="smtp-pass">Google アプリパスワード (16桁)</label>
+            <input type="password" id="smtp-pass" placeholder="Googleアカウントで発行した16桁のパスワード">
+            <div style="font-size: 0.72rem; color: var(--text-sub); margin-top: 0.25rem;">
+              ※ Googleアカウント「セキュリティ」→「2段階認証」→「アプリ パスワード」で作成できます（スペース不要）。
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.25rem;">
+            <button id="save-smtp-btn" class="btn btn-primary" style="flex: 1;">
+              💾 SMTP設定を保存
+            </button>
+            <button id="test-smtp-btn" class="btn btn-warning" style="flex: 1;">
+              📧 SMTP接続テスト送信
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. バックグラウンド監視設定 -->
       <div class="main-card">
         <div style="font-size: 1rem; font-weight: 700; margin-bottom: 0.75rem;">
           ⚙️ バックグラウンド監視設定
@@ -208,10 +255,84 @@
         document.getElementById('alert-target-select').value = data.alertTarget || 'funabashi';
         renderEmailList(data.emails || []);
 
+        // SMTP設定の読み込み
+        loadSmtpSettings();
+
       } catch (err) {
         console.error('Failed to load settings:', err);
       }
     }
+
+    async function loadSmtpSettings() {
+      try {
+        const res = await fetch('/api/smtp-settings');
+        if (!res.ok) return;
+        const smtp = await res.json();
+        const toggle = document.getElementById('smtp-toggle');
+        toggle.checked = !!smtp.enabled;
+        updateSmtpToggleLabel(!!smtp.enabled);
+        document.getElementById('smtp-user').value = smtp.user || '';
+        document.getElementById('smtp-pass').value = '';
+        document.getElementById('smtp-pass').placeholder = smtp.hasPass ? '●●●●●●●● (登録済み・変更時のみ入力)' : 'Googleで発行した16桁のアプリパスワード';
+      } catch (err) {
+        console.error('Failed to load SMTP settings:', err);
+      }
+    }
+
+    function updateSmtpToggleLabel(isEnabled) {
+      const label = document.getElementById('smtp-toggle-label');
+      label.innerText = isEnabled ? 'Gmail/SMTP直接送信: 有効 (直接送信・推奨)' : 'Gmail/SMTP直接送信: 無効 (FormSubmit使用)';
+      label.style.color = isEnabled ? 'var(--success-green)' : 'var(--text-sub)';
+      document.getElementById('smtp-fields').style.opacity = isEnabled ? '1' : '0.85';
+    }
+
+    document.getElementById('smtp-toggle').addEventListener('change', (e) => {
+      updateSmtpToggleLabel(e.target.checked);
+    });
+
+    document.getElementById('save-smtp-btn').addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      setButtonLoading(btn, true, '💾 保存中...');
+      const enabled = document.getElementById('smtp-toggle').checked;
+      const user = document.getElementById('smtp-user').value.trim();
+      const pass = document.getElementById('smtp-pass').value.trim();
+
+      try {
+        const res = await fetch('/api/smtp-settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            enabled,
+            host: 'smtp.gmail.com',
+            port: 587,
+            user,
+            pass: pass || undefined,
+            from: user
+          })
+        });
+        const data = await res.json();
+        showAlert('smtp-alert', res.ok ? '💾 ' + data.message : '❌ ' + (data.error || '保存エラー'), !res.ok);
+        if (res.ok) loadSmtpSettings();
+      } catch (err) {
+        showAlert('smtp-alert', '通信エラーが発生しました', true);
+      } finally {
+        setButtonLoading(btn, false, '', 2);
+      }
+    });
+
+    document.getElementById('test-smtp-btn').addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      setButtonLoading(btn, true, '📧 SMTP接続テスト中...');
+      try {
+        const res = await fetch('/api/test-smtp', { method: 'POST' });
+        const data = await res.json();
+        showAlert('smtp-alert', res.ok ? '✅ ' + data.message : '❌ ' + (data.error || 'テスト失敗'), !res.ok);
+      } catch (err) {
+        showAlert('smtp-alert', '通信エラーが発生しました', true);
+      } finally {
+        setButtonLoading(btn, false, '', 3);
+      }
+    });
 
     function updateToggleLabel(isActive) {
       const label = document.getElementById('monitoring-toggle-label');
