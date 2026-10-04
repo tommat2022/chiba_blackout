@@ -97,14 +97,80 @@ function addLog(message, type = 'info') {
   console.log(`[${logItem.timestamp}] [${type.toUpperCase()}] ${message}`);
 }
 
-// メール送信処理 (FormSubmit.co & SMTP ハイブリッド即時転送)
+// Resend 公式 HTTPS API 送信処理 (ポート443・タイムアウト完全回避)
+async function sendEmailViaResendApi(apiKey, from, toEmails, subject, text) {
+  return new Promise((resolve) => {
+    const fromAddress = from ? `"千葉県停電監視" <${from}>` : `"千葉県停電監視" <onboarding@resend.dev>`;
+    const payload = JSON.stringify({
+      from: fromAddress,
+      to: toEmails,
+      subject: subject,
+      text: text
+    });
+
+    const options = {
+      hostname: 'api.resend.com',
+      path: '/emails',
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey.trim()}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload)
+      }
+    };
+
+    const req = https.request(options, (res) => {
+      let resData = '';
+      res.on('data', chunk => resData += chunk);
+      res.on('end', () => {
+        try {
+          const resJson = JSON.parse(resData);
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolve({ success: true, id: resJson.id });
+          } else {
+            resolve({ success: false, message: resJson.message || `HTTP ${res.statusCode}` });
+          }
+        } catch (e) {
+          resolve({ success: res.statusCode === 200, message: resData });
+        }
+      });
+    });
+
+    req.on('error', (e) => resolve({ success: false, message: e.message }));
+    req.setTimeout(10000, () => { req.destroy(); resolve({ success: false, message: 'Resend API 通信タイムアウト' }); });
+    req.write(payload);
+    req.end();
+  });
+}
+
+// メール送信処理 (FormSubmit.co & Resend/SMTP ハイブリッド即時転送)
 async function sendEmailNotification(subject, bodyText) {
   if (!store.emails || store.emails.length === 0) {
     addLog('通知先メールアドレスが登録されていないため、送信をスキップしました。', 'warning');
     return { success: false, message: '通知先メールアドレスが登録されていません。' };
   }
 
-  // 1. SMTP 設定（管理画面設定 または 環境変数）がある場合は SMTP 経由で直接確実に送信
+  // 1. Resend の場合はポート遮断のない HTTPS API を最優先で使用
+  const isResend = store.smtp && store.smtp.enabled && store.smtp.pass && 
+    (store.smtp.service === 'resend' || store.smtp.pass.startsWith('re_'));
+  if (isResend) {
+    const resendResult = await sendEmailViaResendApi(
+      store.smtp.pass,
+      store.smtp.from,
+      store.emails,
+      subject,
+      bodyText
+    );
+    if (resendResult.success) {
+      const msg = `Resend API (HTTPS) 経由で ${store.emails.length}件 のメールを送信しました (${store.emails.join(', ')})`;
+      addLog(msg, 'success');
+      return { success: true, message: msg };
+    } else {
+      addLog(`Resend API送信エラー: ${resendResult.message}。FormSubmit経由にフォールバックします。`, 'warning');
+    }
+  }
+
+  // 2. Gmail / カスタム SMTP 設定がある場合は SMTP 経由で直接送信
   const smtpConfig = (store.smtp && store.smtp.enabled && store.smtp.pass)
     ? store.smtp
     : (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS)
@@ -118,21 +184,24 @@ async function sendEmailNotification(subject, bodyText) {
         }
       : null;
 
-  if (smtpConfig) {
+  if (smtpConfig && !isResend) {
     try {
       const nodemailer = require('nodemailer');
-      const port = Number(smtpConfig.port) || 465;
+      const port = Number(smtpConfig.port) || 587;
       const transporter = nodemailer.createTransport({
-        host: smtpConfig.host || 'smtp.resend.com',
+        host: smtpConfig.host || 'smtp.gmail.com',
         port: port,
         secure: port === 465,
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 10000,
         auth: {
           user: smtpConfig.user || 'resend',
           pass: smtpConfig.pass
         }
       });
 
-      const fromHeader = smtpConfig.from ? `"千葉県停電監視" <${smtpConfig.from}>` : `"千葉県停電監視" <onboarding@resend.dev>`;
+      const fromHeader = smtpConfig.from ? `"千葉県停電監視" <${smtpConfig.from}>` : `"千葉県停電監視" <${smtpConfig.user}>`;
       await transporter.sendMail({
         from: fromHeader,
         to: store.emails.join(', '),
@@ -140,7 +209,7 @@ async function sendEmailNotification(subject, bodyText) {
         text: bodyText
       });
 
-      const serviceName = smtpConfig.service === 'resend' ? 'Resend' : smtpConfig.service === 'gmail' ? 'Gmail' : 'SMTP';
+      const serviceName = smtpConfig.service === 'gmail' ? 'Gmail' : 'SMTP';
       const msg = `${serviceName}経由で ${store.emails.length}件 のメールを送信しました (${store.emails.join(', ')})`;
       addLog(msg, 'success');
       return { success: true, message: msg };
@@ -980,16 +1049,53 @@ const server = http.createServer((req, res) => {
       if (!smtp || !smtp.pass) {
         return sendJson(400, { error: 'パスワード / APIキーが設定されていません。先に設定を入力・保存してください。' });
       }
+
+      const isResend = smtp.service === 'resend' || (smtp.pass && smtp.pass.startsWith('re_'));
+
+      // Resend の場合はポート遮断のない HTTPS API で即時送信テスト
+      if (isResend) {
+        const subject = '【接続テスト】Resend API 直接送信テスト成功';
+        const body = `これは千葉県停電監視システムからの Resend API (HTTPS) 直接送信テストメールです。\n\n` +
+                     `■ 送信方式: Resend Official API (HTTPS ポート443・タイムアウト完全回避)\n` +
+                     `■ 送信元: ${smtp.from || 'onboarding@resend.dev'}\n` +
+                     `■ 送信先: ${store.emails.join(', ')}\n` +
+                     `■ 送信日時: ${new Date().toLocaleString('ja-JP')}\n\n` +
+                     `Resend APIとの通信が正常に動作しています。FormSubmit等の外部サービスを介さず即時送信されます。`;
+
+        const resResult = await sendEmailViaResendApi(
+          smtp.pass,
+          smtp.from,
+          store.emails,
+          subject,
+          body
+        );
+
+        if (resResult.success) {
+          const msg = `Resend API 接続テストに成功しました！ ${store.emails.join(', ')} 宛にテストメールを送信しました。`;
+          addLog(msg, 'success');
+          return sendJson(200, { message: msg });
+        } else {
+          const errMsg = `Resend 送信失敗: ${resResult.message}`;
+          addLog(errMsg, 'error');
+          return sendJson(400, { error: errMsg });
+        }
+      }
+
+      // Gmail / カスタム SMTP の場合
       if (smtp.service === 'gmail' && !smtp.user) {
         return sendJson(400, { error: 'Gmailアドレスが設定されていません。' });
       }
+
       try {
         const nodemailer = require('nodemailer');
-        const port = Number(smtp.port) || 465;
+        const port = Number(smtp.port) || 587;
         const transporter = nodemailer.createTransport({
-          host: smtp.host || 'smtp.resend.com',
+          host: smtp.host || 'smtp.gmail.com',
           port: port,
           secure: port === 465,
+          connectionTimeout: 10000,
+          greetingTimeout: 10000,
+          socketTimeout: 10000,
           auth: {
             user: smtp.user || 'resend',
             pass: smtp.pass
@@ -998,11 +1104,11 @@ const server = http.createServer((req, res) => {
 
         await transporter.verify();
 
-        const serviceTitle = smtp.service === 'resend' ? 'Resend' : smtp.service === 'gmail' ? 'Gmail' : 'SMTP';
-        const fromHeader = smtp.from ? `"千葉県停電監視" <${smtp.from}>` : `"千葉県停電監視" <onboarding@resend.dev>`;
+        const serviceTitle = smtp.service === 'gmail' ? 'Gmail' : 'SMTP';
+        const fromHeader = smtp.from ? `"千葉県停電監視" <${smtp.from}>` : `"千葉県停電監視" <${smtp.user}>`;
         const subject = `【接続テスト】${serviceTitle} SMTP 直接送信テスト成功`;
         const body = `これは千葉県停電監視システムからの ${serviceTitle} SMTP 直接送信テストメールです。\n\n` +
-                     `■ 送信サービス: ${serviceTitle} (ホスト: ${smtp.host || 'smtp.resend.com'})\n` +
+                     `■ 送信サービス: ${serviceTitle} (ホスト: ${smtp.host || 'smtp.gmail.com'})\n` +
                      `■ 送信元: ${smtp.from || smtp.user}\n` +
                      `■ 送信先: ${store.emails.join(', ')}\n` +
                      `■ 送信日時: ${new Date().toLocaleString('ja-JP')}\n\n` +
