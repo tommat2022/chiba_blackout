@@ -44,11 +44,12 @@ let store = {
   logs: [],
   smtp: {
     enabled: false,
-    host: 'smtp.gmail.com',
-    port: 587,
-    user: '',
+    service: 'resend', // 'resend' | 'gmail' | 'custom'
+    host: 'smtp.resend.com',
+    port: 465,
+    user: 'resend',
     pass: '',
-    from: ''
+    from: 'onboarding@resend.dev'
   }
 };
 
@@ -104,10 +105,11 @@ async function sendEmailNotification(subject, bodyText) {
   }
 
   // 1. SMTP 設定（管理画面設定 または 環境変数）がある場合は SMTP 経由で直接確実に送信
-  const smtpConfig = (store.smtp && store.smtp.enabled && store.smtp.user && store.smtp.pass)
+  const smtpConfig = (store.smtp && store.smtp.enabled && store.smtp.pass)
     ? store.smtp
     : (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS)
       ? {
+          service: 'custom',
           host: process.env.SMTP_HOST,
           port: Number(process.env.SMTP_PORT) || 587,
           user: process.env.SMTP_USER,
@@ -119,24 +121,27 @@ async function sendEmailNotification(subject, bodyText) {
   if (smtpConfig) {
     try {
       const nodemailer = require('nodemailer');
+      const port = Number(smtpConfig.port) || 465;
       const transporter = nodemailer.createTransport({
-        host: smtpConfig.host || 'smtp.gmail.com',
-        port: Number(smtpConfig.port) || 587,
-        secure: Number(smtpConfig.port) === 465,
+        host: smtpConfig.host || 'smtp.resend.com',
+        port: port,
+        secure: port === 465,
         auth: {
-          user: smtpConfig.user,
+          user: smtpConfig.user || 'resend',
           pass: smtpConfig.pass
         }
       });
 
+      const fromHeader = smtpConfig.from ? `"千葉県停電監視" <${smtpConfig.from}>` : `"千葉県停電監視" <onboarding@resend.dev>`;
       await transporter.sendMail({
-        from: smtpConfig.from || `"千葉県停電監視" <${smtpConfig.user}>`,
+        from: fromHeader,
         to: store.emails.join(', '),
         subject: subject,
         text: bodyText
       });
 
-      const msg = `SMTP (${smtpConfig.user}) 経由で ${store.emails.length}件 のメールを直接送信しました (${store.emails.join(', ')})`;
+      const serviceName = smtpConfig.service === 'resend' ? 'Resend' : smtpConfig.service === 'gmail' ? 'Gmail' : 'SMTP';
+      const msg = `${serviceName}経由で ${store.emails.length}件 のメールを送信しました (${store.emails.join(', ')})`;
       addLog(msg, 'success');
       return { success: true, message: msg };
     } catch (smtpErr) {
@@ -925,30 +930,44 @@ const server = http.createServer((req, res) => {
   // 12. SMTP設定取得・更新 (要ログイン)
   if (pathname === '/api/smtp-settings' && req.method === 'GET') {
     if (!isAuthenticated(req)) return sendJson(401, { error: 'ログインが必要です' });
-    const smtp = store.smtp || { enabled: false, host: 'smtp.gmail.com', port: 587, user: '', pass: '', from: '' };
+    const smtp = store.smtp || { enabled: false, service: 'resend', host: 'smtp.resend.com', port: 465, user: 'resend', pass: '', from: 'onboarding@resend.dev' };
     return sendJson(200, {
       enabled: !!smtp.enabled,
-      host: smtp.host || 'smtp.gmail.com',
-      port: smtp.port || 587,
-      user: smtp.user || '',
+      service: smtp.service || 'resend',
+      host: smtp.host || 'smtp.resend.com',
+      port: smtp.port || 465,
+      user: smtp.user || 'resend',
       hasPass: !!(smtp.pass),
-      from: smtp.from || ''
+      from: smtp.from || 'onboarding@resend.dev'
     });
   }
 
   if (pathname === '/api/smtp-settings' && req.method === 'POST') {
     if (!isAuthenticated(req)) return sendJson(401, { error: 'ログインが必要です' });
-    return parseJsonBody(({ enabled, host, port, user, pass, from }) => {
+    return parseJsonBody(({ enabled, service, host, port, user, pass, from }) => {
       store.smtp = store.smtp || {};
       store.smtp.enabled = !!enabled;
-      if (host) store.smtp.host = host.trim();
-      if (port) store.smtp.port = Number(port) || 587;
-      if (user) store.smtp.user = user.trim();
+      store.smtp.service = service || 'resend';
+      if (store.smtp.service === 'resend') {
+        store.smtp.host = 'smtp.resend.com';
+        store.smtp.port = Number(port) || 465;
+        store.smtp.user = 'resend';
+        store.smtp.from = from ? from.trim() : 'onboarding@resend.dev';
+      } else if (store.smtp.service === 'gmail') {
+        store.smtp.host = 'smtp.gmail.com';
+        store.smtp.port = Number(port) || 587;
+        store.smtp.user = user ? user.trim() : '';
+        store.smtp.from = user ? user.trim() : '';
+      } else {
+        if (host) store.smtp.host = host.trim();
+        if (port) store.smtp.port = Number(port) || 587;
+        if (user) store.smtp.user = user.trim();
+        if (from) store.smtp.from = from.trim();
+      }
       if (pass && pass.trim() !== '') store.smtp.pass = pass.trim();
-      if (from) store.smtp.from = from.trim();
       
       saveStore();
-      addLog(`SMTP設定を更新しました (有効: ${store.smtp.enabled ? 'ON' : 'OFF'}, ユーザー: ${store.smtp.user || '未設定'})`, 'info');
+      addLog(`SMTP設定を更新しました (サービス: ${store.smtp.service}, 有効: ${store.smtp.enabled ? 'ON' : 'OFF'})`, 'info');
       return sendJson(200, { success: true, message: 'SMTP設定を保存しました。' });
     });
   }
@@ -958,38 +977,45 @@ const server = http.createServer((req, res) => {
     if (!isAuthenticated(req)) return sendJson(401, { error: 'ログインが必要です' });
     (async () => {
       const smtp = store.smtp;
-      if (!smtp || !smtp.user || !smtp.pass) {
-        return sendJson(400, { error: 'SMTPユーザー名とアプリパスワードが設定されていません。先に設定を入力・保存してください。' });
+      if (!smtp || !smtp.pass) {
+        return sendJson(400, { error: 'パスワード / APIキーが設定されていません。先に設定を入力・保存してください。' });
+      }
+      if (smtp.service === 'gmail' && !smtp.user) {
+        return sendJson(400, { error: 'Gmailアドレスが設定されていません。' });
       }
       try {
         const nodemailer = require('nodemailer');
+        const port = Number(smtp.port) || 465;
         const transporter = nodemailer.createTransport({
-          host: smtp.host || 'smtp.gmail.com',
-          port: Number(smtp.port) || 587,
-          secure: Number(smtp.port) === 465,
+          host: smtp.host || 'smtp.resend.com',
+          port: port,
+          secure: port === 465,
           auth: {
-            user: smtp.user,
+            user: smtp.user || 'resend',
             pass: smtp.pass
           }
         });
 
         await transporter.verify();
 
-        const subject = '【接続テスト】Gmail SMTP 直接送信テスト成功';
-        const body = `これは千葉県停電監視システムからの Gmail SMTP 直接送信テストメールです。\n\n` +
-                     `■ 送信元: ${smtp.user}\n` +
+        const serviceTitle = smtp.service === 'resend' ? 'Resend' : smtp.service === 'gmail' ? 'Gmail' : 'SMTP';
+        const fromHeader = smtp.from ? `"千葉県停電監視" <${smtp.from}>` : `"千葉県停電監視" <onboarding@resend.dev>`;
+        const subject = `【接続テスト】${serviceTitle} SMTP 直接送信テスト成功`;
+        const body = `これは千葉県停電監視システムからの ${serviceTitle} SMTP 直接送信テストメールです。\n\n` +
+                     `■ 送信サービス: ${serviceTitle} (ホスト: ${smtp.host || 'smtp.resend.com'})\n` +
+                     `■ 送信元: ${smtp.from || smtp.user}\n` +
                      `■ 送信先: ${store.emails.join(', ')}\n` +
                      `■ 送信日時: ${new Date().toLocaleString('ja-JP')}\n\n` +
                      `SMTP接続と認証が正常に動作しています。FormSubmit等の外部サービスを介さず直接送信されます。`;
 
         await transporter.sendMail({
-          from: smtp.from || `"千葉県停電監視" <${smtp.user}>`,
+          from: fromHeader,
           to: store.emails.join(', '),
           subject: subject,
           text: body
         });
 
-        const msg = `Gmail SMTP接続テストに成功しました！ ${store.emails.join(', ')} 宛にテストメールを直接送信しました。`;
+        const msg = `${serviceTitle} SMTP接続テストに成功しました！ ${store.emails.join(', ')} 宛にテストメールを送信しました。`;
         addLog(msg, 'success');
         return sendJson(200, { message: msg });
       } catch (err) {
