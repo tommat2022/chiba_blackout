@@ -13,6 +13,9 @@ const crypto = require('crypto');
 const tls = require('tls');
 const net = require('net');
 
+// FormSubmit セッションCookie保持用
+let formSubmitCookies = '';
+
 const PORT = process.env.PORT || 3000;
 const STORE_PATH = path.join(__dirname, 'data', 'store.json');
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -36,7 +39,7 @@ let store = {
   previousChibaCount: 0,
   previousKantoCount: 0,
   cities: [],
-  funabashi: { count: 0, areas: [] },
+  funabashi: { name: '船橋市', count: 0, areas: [], detail: '', updateTime: '', notices: [] },
   kanto: [],
   logs: []
 };
@@ -85,11 +88,40 @@ function addLog(message, type = 'info') {
   console.log(`[${logItem.timestamp}] [${type.toUpperCase()}] ${message}`);
 }
 
-// メール送信処理 (FormSubmit.co & Web3Forms ハイブリッド即時転送)
+// メール送信処理 (FormSubmit.co & SMTP ハイブリッド即時転送)
 async function sendEmailNotification(subject, bodyText) {
   if (!store.emails || store.emails.length === 0) {
     addLog('通知先メールアドレスが登録されていないため、送信をスキップしました。', 'warning');
     return { success: false, message: '通知先メールアドレスが登録されていません。' };
+  }
+
+  // 1. 環境変数に SMTP 設定がある場合は SMTP 経由で直接確実に送信
+  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+    try {
+      const nodemailer = require('nodemailer');
+      const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: Number(process.env.SMTP_PORT) || 587,
+        secure: Number(process.env.SMTP_PORT) === 465,
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS
+        }
+      });
+
+      await transporter.sendMail({
+        from: process.env.SMTP_FROM || `"千葉県停電監視" <${process.env.SMTP_USER}>`,
+        to: store.emails.join(', '),
+        subject: subject,
+        text: bodyText
+      });
+
+      const msg = `SMTP経由で ${store.emails.length}件 のメールを直接送信しました (${store.emails.join(', ')})`;
+      addLog(msg, 'success');
+      return { success: true, message: msg };
+    } catch (smtpErr) {
+      addLog(`SMTP送信エラー: ${smtpErr.message}。FormSubmit経由にフォールバックします。`, 'warning');
+    }
   }
 
   let successCount = 0;
@@ -98,40 +130,56 @@ async function sendEmailNotification(subject, bodyText) {
 
   for (const email of store.emails) {
     try {
+      // 重複検知・スパム判定を回避するための一意なIDとタイムスタンプ
+      const uniqueId = crypto.randomBytes(4).toString('hex');
       const payload = JSON.stringify({
         _subject: subject,
         _captcha: 'false',
         _template: 'table',
+        _unique_id: uniqueId,
         '件名': subject,
         '通知本文': bodyText,
         '送信日時': new Date().toLocaleString('ja-JP'),
+        '管理番号': `#${uniqueId}`,
         'システム': '千葉県停電監視アラート'
       });
 
-      // 1. FormSubmit.co への送信 (Referer/Origin ヘッダー必須)
+      const headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Referer': 'https://chiba-teiden-monitor.onrender.com/chiba_teiden.html',
+        'Origin': 'https://chiba-teiden-monitor.onrender.com',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Content-Length': Buffer.byteLength(payload)
+      };
+
+      // 取得済みのセッションCookieがあれば付与
+      if (formSubmitCookies) {
+        headers['Cookie'] = formSubmitCookies;
+      }
+
       const options = {
         hostname: 'formsubmit.co',
         path: `/ajax/${encodeURIComponent(email)}`,
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Referer': 'http://localhost:3000/chiba_teiden.html',
-          'Origin': 'http://localhost:3000',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Content-Length': Buffer.byteLength(payload)
-        }
+        headers
       };
 
       const result = await new Promise((resolve) => {
         const req = https.request(options, (res) => {
           let resData = '';
+          // 新しいCookieを保存
+          if (res.headers['set-cookie']) {
+            formSubmitCookies = res.headers['set-cookie'].map(c => c.split(';')[0]).join('; ');
+          }
           res.on('data', chunk => resData += chunk);
           res.on('end', () => {
             try {
               const resJson = JSON.parse(resData);
               if (res.statusCode >= 200 && res.statusCode < 300 && (resJson.success === 'true' || resJson.success === true)) {
                 resolve({ ok: true, data: resJson });
+              } else if (res.statusCode === 429) {
+                resolve({ ok: false, message: 'FormSubmitの短時間レート制限に達しました（数分後に再試行してください）' });
               } else if (resData.includes('Activation') || (resJson.message && resJson.message.includes('Activation'))) {
                 resolve({ ok: false, isActivationNeeded: true, message: resJson.message });
               } else {
@@ -178,7 +226,7 @@ async function sendEmailNotification(subject, bodyText) {
   }
 }
 
-// TEPCO 千葉県＆関東全域 XML 停電情報の取得処理 (Cookie認証ヘッダー必須)
+// TEPCO 千葉県・関東全域・各市町村 XML 停電情報の取得処理 (Cookie認証ヘッダー必須)
 async function fetchSingleTepcoXml(url) {
   return new Promise((resolve) => {
     const options = {
@@ -194,7 +242,7 @@ async function fetchSingleTepcoXml(url) {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
-        if (res.statusCode === 200 && data.includes('<東京電力停電情報>')) {
+        if (res.statusCode === 200 && (data.includes('<東京電力停電情報>') || data.includes('12204000000') || data.includes('船橋市'))) {
           return resolve(data);
         }
         resolve(null);
@@ -205,39 +253,153 @@ async function fetchSingleTepcoXml(url) {
   });
 }
 
+// 都県・全域XMLから各市町村・都県エリア一覧を抽出
 function parseXmlAreas(xmlString) {
   if (!xmlString) return [];
   const items = [];
   const areaMatches = xmlString.match(/<エリア[^>]*>[\s\S]*?<\/エリア>/g) || [];
   for (const areaXml of areaMatches) {
     const nameMatch = areaXml.match(/<名前>(.*?)<\/名前>/);
-    const countMatch = areaXml.match(/<停電軒数>(\d+)<\/停電軒数>/);
+    const countMatch = areaXml.match(/<停電軒数>(.*?)<\/停電軒数>/);
     if (nameMatch) {
       const name = nameMatch[1].trim();
-      const count = countMatch ? parseInt(countMatch[1], 10) : 0;
+      let count = 0;
+      if (countMatch) {
+        const raw = countMatch[1].trim();
+        count = parseInt(raw.replace(/[^\d]/g, ''), 10) || 0;
+        if (count === 0 && (raw.includes('未満') || raw.startsWith('<'))) count = 5;
+      }
       items.push({ name, count, areas: [] });
     }
   }
   return items;
 }
 
+// 船橋市などの市町村別詳細データ（12204000000.xml / 12204000000.html）から地区情報・復旧見込みを抽出
+function parseCityXml(xmlOrHtmlString, defaultName = '船橋市') {
+  if (!xmlOrHtmlString) {
+    return { name: defaultName, count: 0, areas: [], detail: '', updateTime: '', notices: [] };
+  }
+
+  // 1. タイトル
+  const titleMatch = xmlOrHtmlString.match(/<タイトル>(.*?)<\/タイトル>/) || xmlOrHtmlString.match(/<h1[^>]*>[\s\S]*?-\s*(.*?)<\/h1>/);
+  const name = titleMatch ? titleMatch[1].trim() : defaultName;
+
+  // 2. 市全体の停電軒数
+  const totalCountMatch = xmlOrHtmlString.match(/<東京電力停電情報>[\s\S]*?<停電軒数>(.*?)<\/停電軒数>/) || xmlOrHtmlString.match(/<停電軒数>(.*?)<\/停電軒数>/);
+  let totalCount = 0;
+  if (totalCountMatch) {
+    const rawVal = totalCountMatch[1].trim();
+    totalCount = parseInt(rawVal.replace(/[^\d]/g, ''), 10) || (rawVal.includes('<') || rawVal.includes('未満') ? 5 : 0);
+  }
+
+  // 3. 地域詳細情報（発生状況・復旧見込みなど）
+  const detailMatch = xmlOrHtmlString.match(/<地域詳細情報>([\s\S]*?)<\/地域詳細情報>/);
+  let detail = detailMatch ? detailMatch[1].trim() : '';
+
+  // 4. 更新日時
+  const updateMatch = xmlOrHtmlString.match(/<更新日時>(.*?)<\/更新日時>/) || xmlOrHtmlString.match(/class="blackout-pagetitle__date">([^<]+)/);
+  let updateTime = updateMatch ? updateMatch[1].trim().replace(/現在$/, '') : '';
+  if (updateTime.length === 12 && /^\d+$/.test(updateTime)) {
+    // 202608272254 -> 2026/08/27 22:54
+    updateTime = `${updateTime.slice(0,4)}/${updateTime.slice(4,6)}/${updateTime.slice(6,8)} ${updateTime.slice(8,10)}:${updateTime.slice(10,12)}`;
+  }
+
+  // 5. お知らせ
+  const notices = [];
+  const noticeMatches = xmlOrHtmlString.match(/<お知らせ\d+>(.*?)<\/お知らせ\d+>/g) || [];
+  for (const nXml of noticeMatches) {
+    const text = nXml.replace(/<\/?お知らせ\d+>/g, '').trim();
+    if (text) notices.push(text);
+  }
+
+  // 6. 各地区（エリア: 町名）の抽出パース
+  const areas = [];
+  const areaMatches = xmlOrHtmlString.match(/<エリア[^>]*>[\s\S]*?<\/エリア>/g) || [];
+  for (const areaXml of areaMatches) {
+    const codeMatch = areaXml.match(/コード="([^"]+)"/);
+    const code = codeMatch ? codeMatch[1] : '';
+    const nameMatch = areaXml.match(/<名前>(.*?)<\/名前>/);
+    const countMatch = areaXml.match(/<停電軒数>(.*?)<\/停電軒数>/);
+
+    if (nameMatch) {
+      const areaName = nameMatch[1].trim();
+      let areaCount = 0;
+      let countText = '';
+      if (countMatch) {
+        const rawCount = countMatch[1].trim();
+        areaCount = parseInt(rawCount.replace(/[^\d]/g, ''), 10) || 0;
+        if (rawCount.includes('未満') || rawCount.startsWith('<') || (areaCount > 0 && areaCount < 10)) {
+          countText = '10軒未満';
+          if (areaCount === 0) areaCount = 5;
+        } else if (areaCount >= 10) {
+          countText = `約${areaCount.toLocaleString()}軒`;
+        } else {
+          countText = `${areaCount.toLocaleString()}軒`;
+        }
+      }
+
+      // 停電軒数が存在する地区（停電発生地区）のみ登録
+      if (areaCount > 0 || (countMatch && countMatch[1].trim() !== '' && countMatch[1].trim() !== '0')) {
+        areas.push({
+          code,
+          name: areaName,
+          count: areaCount,
+          countText: countText || (areaCount > 0 ? `${areaCount.toLocaleString()}軒` : '0軒')
+        });
+      }
+    }
+  }
+
+  // もし市全体停電軒数が0だが地区データがある場合、地区合計を採用
+  if (totalCount === 0 && areas.length > 0) {
+    totalCount = areas.reduce((sum, a) => sum + (a.count || 0), 0);
+  }
+
+  return {
+    name,
+    count: totalCount,
+    areas,
+    detail,
+    updateTime,
+    notices
+  };
+}
+
 async function fetchTepcoOutageData() {
-  const [chibaXml, kantoXml] = await Promise.all([
+  const [chibaXml, kantoXml, funabashiXml] = await Promise.all([
     fetchSingleTepcoXml('https://teideninfo.tepco.co.jp/flash/xml/12000000000.xml'),
-    fetchSingleTepcoXml('https://teideninfo.tepco.co.jp/flash/xml/00000000000.xml')
+    fetchSingleTepcoXml('https://teideninfo.tepco.co.jp/flash/xml/00000000000.xml'),
+    fetchSingleTepcoXml('https://teideninfo.tepco.co.jp/flash/xml/12204000000.xml')
   ]);
 
   const cities = parseXmlAreas(chibaXml);
-  let funabashiData = cities.find(c => c.name && c.name.includes('船橋')) || { name: '船橋市', count: 0, areas: [] };
+  const kanto = parseXmlAreas(kantoXml);
+  let funabashiData = parseCityXml(funabashiXml, '船橋市');
+
+  // 千葉県全域リスト内の船橋市と同期
+  const chibaFunabashi = cities.find(c => c.name && c.name.includes('船橋'));
+  if (chibaFunabashi) {
+    if (funabashiXml) {
+      chibaFunabashi.count = funabashiData.count;
+      chibaFunabashi.areas = funabashiData.areas;
+    } else {
+      funabashiData.count = chibaFunabashi.count || 0;
+    }
+  } else {
+    cities.unshift({
+      name: '船橋市',
+      count: funabashiData.count,
+      areas: funabashiData.areas
+    });
+  }
 
   // データ取得失敗時のデフォルト補完
   if (cities.length === 0) {
     const defaultCities = ['船橋市', '千葉市中央区', '市川市', '松戸市', '柏市', '木更津市'];
     defaultCities.forEach(name => cities.push({ name, count: 0, areas: [] }));
-    funabashiData = cities[0];
   }
 
-  const kanto = parseXmlAreas(kantoXml);
   if (kanto.length === 0) {
     const defaultKanto = ['東京都', '神奈川県', '埼玉県', '千葉県', '茨城県', '栃木県', '群馬県', '山梨県', '静岡県'];
     defaultKanto.forEach(name => kanto.push({ name, count: 0 }));
@@ -272,13 +434,25 @@ async function checkPowerOutages(isManualTrigger = false, isTargetChanged = fals
   if (result.success) {
     // ★ 1回限定シミュレーション判定
     if (store.isNextCheckSimulated) {
-      addLog('🧪 【1回限定シミュレーション実行】自動チェック内に船橋市 1,500軒の停電発生データを偽装割り込みさせています。', 'warning');
-      result.funabashi = { count: 1500, areas: ['模擬本町1丁目', '模擬湊町2丁目'] };
+      addLog('🧪 【1回限定シミュレーション実行】自動チェック内に船橋市 1,500軒の地区別停電発生データを偽装割り込みさせています。', 'warning');
+      const simAreas = [
+        { code: '12204001000', name: '本町1丁目', count: 800, countText: '約800軒' },
+        { code: '12204002000', name: '湊町2丁目', count: 500, countText: '約500軒' },
+        { code: '12204003000', name: '海神3丁目', count: 200, countText: '約200軒' }
+      ];
+      result.funabashi = {
+        name: '船橋市',
+        count: 1500,
+        areas: simAreas,
+        detail: '現在状況確認および復旧作業を進めております。復旧見込みは1時間後を予定しております。',
+        updateTime: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }),
+        notices: ['船橋市内で停電が発生しております（シミュレーション）']
+      };
       const fIdx = result.cities.findIndex(c => c.name && c.name.includes('船橋'));
       if (fIdx !== -1) {
-        result.cities[fIdx] = { name: '船橋市', count: 1500, areas: result.funabashi.areas };
+        result.cities[fIdx] = { name: '船橋市', count: 1500, areas: simAreas };
       } else {
-        result.cities.unshift({ name: '船橋市', count: 1500, areas: result.funabashi.areas });
+        result.cities.unshift({ name: '船橋市', count: 1500, areas: simAreas });
       }
       result.totalChibaCount = result.cities.reduce((sum, c) => sum + (c.count || 0), 0);
       store.isNextCheckSimulated = false; // フラグ解除
@@ -298,7 +472,7 @@ async function checkPowerOutages(isManualTrigger = false, isTargetChanged = fals
 
     const target = store.alertTarget || 'funabashi';
 
-    addLog(`チェック完了: 千葉県全域 ${currentChibaCount.toLocaleString()}軒 / 関東全域 ${currentKantoCount.toLocaleString()}軒 / 船橋市 ${currentFunabashiCount.toLocaleString()}軒 (対象設定: ${target})`, 'info');
+    addLog(`チェック完了: 千葉県全域 ${currentChibaCount.toLocaleString()}軒 / 関東全域 ${currentKantoCount.toLocaleString()}軒 / 船橋市 ${currentFunabashiCount.toLocaleString()}軒 (地区情報: ${store.funabashi.areas ? store.funabashi.areas.length : 0}地区, 対象設定: ${target})`, 'info');
 
     let isTriggered = false;
     let subject = '';
@@ -315,6 +489,12 @@ async function checkPowerOutages(isManualTrigger = false, isTargetChanged = fals
       .map(c => `・${c.name}: ${c.count.toLocaleString()}軒`)
       .join('\n') || '・特になし';
 
+    const outageFunabashiDistricts = (store.funabashi.areas && store.funabashi.areas.length > 0)
+      ? store.funabashi.areas.map(a => typeof a === 'object' ? `・${a.name}: ${a.countText || (a.count + '軒')}` : `・${a}`).join('\n')
+      : '・詳細確認中';
+
+    const funabashiDetailSection = store.funabashi.detail ? `\n■ 地域詳細情報・復旧見込み:\n${store.funabashi.detail}\n` : '';
+
     if (target === 'funabashi') {
       if (currentFunabashiCount !== prevFunabashi || (isTargetChanged && currentFunabashiCount > 0)) {
         if (currentFunabashiCount > 0) {
@@ -322,13 +502,14 @@ async function checkPowerOutages(isManualTrigger = false, isTargetChanged = fals
           subject = `【緊急警報】船橋市 停電情報更新 (${currentFunabashiCount.toLocaleString()}軒)`;
           message = `船橋市内で停電情報が更新されました。\n\n` +
                     `■ 船橋市 停電件数: ${currentFunabashiCount.toLocaleString()} 軒 (前回: ${prevFunabashi.toLocaleString()} 軒)\n` +
-                    `■ 該当地域: ${store.funabashi.areas.length > 0 ? store.funabashi.areas.join(', ') : '詳細確認中'}\n` +
+                    `■ 停電発生地区一覧:\n${outageFunabashiDistricts}\n` +
+                    `${funabashiDetailSection}\n` +
                     `■ 判定時刻: ${new Date().toLocaleString('ja-JP')}\n\n` +
                     `https://teideninfo.tepco.co.jp/html/12204000000.html`;
         } else if (prevFunabashi > 0) {
           isTriggered = true;
           subject = `【復旧通知】船橋市 停電復旧のお知らせ`;
-          message = `船橋市内の停電が復旧しました。\n■ 現在の停電件数: 0 軒\n■ 復旧確認時刻: ${new Date().toLocaleString('ja-JP')}`;
+          message = `船橋市内の停電が復旧しました。\n■ 現在の停電件数: 0 軒 (全地区復旧完了)\n■ 復旧確認時刻: ${new Date().toLocaleString('ja-JP')}`;
         }
       }
 
@@ -631,8 +812,20 @@ const server = http.createServer((req, res) => {
       } else {
         targetName = '船橋市';
         const testCount = 1200;
-        const testAreas = ['船橋市本町1丁目', '船橋市湊町2丁目', '船橋市海神3丁目'];
-        store.funabashi = { count: testCount, areas: testAreas };
+        const testAreas = [
+          { code: '12204001000', name: '船橋市本町1丁目', count: 600, countText: '約600軒' },
+          { code: '12204002000', name: '船橋市湊町2丁目', count: 400, countText: '約400軒' },
+          { code: '12204003000', name: '船橋市海神3丁目', count: 200, countText: '約200軒' }
+        ];
+        const testDetail = '【動作テスト】変電設備点検に伴い、以下の地区で停電が発生している想定です。復旧見込みは1時間後を予定しています。';
+        store.funabashi = {
+          name: '船橋市',
+          count: testCount,
+          areas: testAreas,
+          detail: testDetail,
+          updateTime: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }),
+          notices: ['船橋市内で停電が発生しております（動作テスト）']
+        };
         store.previousFunabashiCount = testCount;
         
         const fCity = store.cities.find(c => c.name && c.name.includes('船橋'));
@@ -643,10 +836,12 @@ const server = http.createServer((req, res) => {
           store.cities.unshift({ name: '船橋市', count: testCount, areas: testAreas });
         }
 
+        const areaStr = testAreas.map(a => `・${a.name}: ${a.countText}`).join('\n');
         subject = `【ハッカテスト中】船橋市 停電情報更新 (1,200軒)`;
         message = `[動作テスト] 船橋市内で停電発生を検知した想定のテスト通知です。\n\n` +
                   `■ 船橋市 停電件数: ${testCount} 軒 (前回: 0 軒)\n` +
-                  `■ 該当地域: ${testAreas.join(', ')}\n` +
+                  `■ 停電発生地区一覧:\n${areaStr}\n\n` +
+                  `■ 地域詳細情報・復旧見込み:\n${testDetail}\n\n` +
                   `■ 判定時刻: ${new Date().toLocaleString('ja-JP')}\n\n` +
                   `https://teideninfo.tepco.co.jp/html/12204000000.html`;
       }
@@ -671,7 +866,14 @@ const server = http.createServer((req, res) => {
     (async () => {
       addLog('🧹 テストデータをクリアし、船橋市の停電情報を正常状態（0件）にリセットしました。', 'info');
       
-      store.funabashi = { count: 0, areas: [] };
+      store.funabashi = {
+        name: '船橋市',
+        count: 0,
+        areas: [],
+        detail: '',
+        updateTime: '',
+        notices: []
+      };
       store.previousFunabashiCount = 0;
       store.isNextCheckSimulated = false;
       
